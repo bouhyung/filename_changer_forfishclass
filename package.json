@@ -2,53 +2,11 @@
   "name": "file-rename",
   "version": "1.0.0",
   "description": "파일 이름 일괄 변경 앱",
-  "main": "main.js",
-  "author": "",
   "scripts": {
-    "start": "env -u ELECTRON_RUN_AS_NODE electron .",
-    "build": "npx electron-builder --publish never && node scripts/remove-blockmap.js",
-    "build:mac": "npx electron-builder --mac --publish never && node scripts/remove-blockmap.js",
-    "build:win": "npx electron-builder --win && node scripts/remove-blockmap.js"
+    "tauri": "cargo tauri",
+    "tauri:dev": "cargo tauri dev",
+    "tauri:build": "cargo tauri build"
   },
-  "devDependencies": {
-    "electron": "^29.0.0",
-    "electron-builder": "^26.8.1"
-  },
-  "build": {
-    "appId": "com.file-rename.app",
-    "productName": "File Arrange for Fish Class",
-    "icon": "build/icon.png",
-    "directories": {
-      "output": "dist",
-      "buildResources": "build"
-    },
-    "files": [
-      "main.js",
-      "src/**/*"
-    ],
-    "mac": {
-      "category": "public.app-category.utilities",
-      "target": [
-        "dmg",
-        "zip"
-      ]
-    },
-    "win": {
-      "target": [
-        "nsis",
-        "portable"
-      ]
-    },
-    "nsis": {
-      "oneClick": false,
-      "allowToChangeInstallationDirectory": true,
-      "differentialPackage": false
-    },
-    "dmg": {
-      "writeUpdateInfo": false
-    }
-  },
-  "dependencies": {
-    "heic-convert": "^2.1.0"
-  }
+  "devDependencies": {},
+  "dependencies": {}
 }

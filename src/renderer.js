@@ -1,4 +1,9 @@
-const VIDEO_EXT = ['.mp4', '.mov', '.avi', '.mkv', '.webm', '.m4v']
+const { invoke } = window.__TAURI__.core
+const { convertFileSrc } = window.__TAURI__.core
+const { open } = window.__TAURI__.dialog
+const { WebviewWindow } = window.__TAURI__.webviewWindow
+
+let VIDEO_EXT = []
 
 function isVideoFile(fileName) {
   const ext = fileName.includes('.') ? fileName.substring(fileName.lastIndexOf('.')).toLowerCase() : ''
@@ -6,12 +11,12 @@ function isVideoFile(fileName) {
 }
 
 let currentFolder = null
-let imageFiles = []      // 이미지/동영상 파일명 배열
-let currentIndex = 0     // 현재 보고 있는 파일 인덱스
-const fishInputCache = {}  // 파일명별 물고기 입력 저장 (이전/다음 이동 시 복원)
-const parsedCache = {}  // 파일명별 파싱 결과 캐시 (originalBase, fishName 등)
-let renameCount = 0     // 이름 변경 횟수
-let skipCount = 0       // 스킵 횟수
+let imageFiles = []
+let currentIndex = 0
+let fishInputCache = {}
+let parsedCache = {}
+let renameCount = 0
+let skipCount = 0
 
 const folderPathEl      = document.getElementById('folderPath')
 const headerStatsEl     = document.getElementById('headerStats')
@@ -45,10 +50,12 @@ const lightboxZoomIn   = document.getElementById('lightboxZoomIn')
 const lightboxZoomOut  = document.getElementById('lightboxZoomOut')
 const lightboxZoomValue = document.getElementById('lightboxZoomValue')
 
-// ── 초기화: 기본값 로드 ────────────────────────────────────
+// ── 초기화 ────────────────────────────────────────────────
 
-;(async function loadDefaultsOnInit() {
-  const defaults = await window.api.loadDefaults()
+;(async function initOnLoad() {
+  VIDEO_EXT = await invoke('get_video_ext')
+
+  const defaults = await invoke('load_defaults')
   if (defaults) {
     inputPointPrefix.value = defaults.pointPrefix != null ? defaults.pointPrefix : '남애'
     if (defaults.pointName != null) inputPointName.value = defaults.pointName
@@ -62,13 +69,17 @@ const lightboxZoomValue = document.getElementById('lightboxZoomValue')
 
 // ── 이벤트 ────────────────────────────────────────────────
 
-document.getElementById('btnHelp').addEventListener('click', (e) => {
+document.getElementById('btnHelp').addEventListener('click', async (e) => {
   e.preventDefault()
-  window.api.openHelp()
+  try {
+    await invoke('open_help')
+  } catch (_) {
+    // 도움말 창이 이미 열려 있으면 무시
+  }
 })
 
 btnSelect.addEventListener('click', async () => {
-  const folder = await window.api.selectFolder()
+  const folder = await open({ directory: true, multiple: false })
   if (!folder) return
   currentFolder = folder
   folderPathEl.textContent = folder
@@ -92,19 +103,15 @@ btnToday.addEventListener('click', () => {
   updateFilenamePreview()
 })
 
-// 기본값 변경 시 저장 및 파일명 미리보기 갱신
-inputPointPrefix.addEventListener('input', debouncedSaveDefaults)
-inputPointPrefix.addEventListener('input', updateFilenamePreview)
-inputPointName.addEventListener('input', debouncedSaveDefaults)
-inputPointName.addEventListener('input', updateFilenamePreview)
-inputPhotographer.addEventListener('input', debouncedSaveDefaults)
-inputPhotographer.addEventListener('input', updateFilenamePreview)
-inputShootDate.addEventListener('input', debouncedSaveDefaults)
-inputShootDate.addEventListener('input', updateFilenamePreview)
-chkNight.addEventListener('change', debouncedSaveDefaults)
-chkNight.addEventListener('change', updateFilenamePreview)
+function onDefaultInputChange() {
+  debouncedSaveDefaults()
+  updateFilenamePreview()
+}
+for (const el of [inputPointPrefix, inputPointName, inputPhotographer, inputShootDate]) {
+  el.addEventListener('input', onDefaultInputChange)
+}
+chkNight.addEventListener('change', onDefaultInputChange)
 
-// 이미지 클릭 시 확대 뷰어
 imagePreviewEl.addEventListener('click', () => {
   if (imagePreviewEl.src && !imagePreviewEl.classList.contains('hidden')) {
     lightboxVideoEl.classList.add('hidden')
@@ -120,7 +127,6 @@ imagePreviewEl.addEventListener('click', () => {
   }
 })
 
-// 동영상 클릭 시 라이트박스에서 재생
 videoPreviewEl.addEventListener('click', () => {
   if (videoPreviewEl.src && !videoPreviewEl.classList.contains('hidden')) {
     lightboxImageEl.removeAttribute('src')
@@ -139,7 +145,6 @@ videoPreviewEl.addEventListener('click', () => {
 lightboxBackdrop.addEventListener('click', closeLightbox)
 lightboxZoomWrap.addEventListener('click', (e) => e.stopPropagation())
 
-// 확대 뷰어 줌 상태
 let lightboxZoom = 1
 let lightboxX = 0
 let lightboxY = 0
@@ -161,7 +166,6 @@ lightboxZoomOut.addEventListener('click', (e) => {
   applyLightboxTransform()
 })
 
-// 더블클릭 확대 (1x ↔ 2x 토글)
 lightboxZoomWrap.addEventListener('dblclick', (e) => {
   e.stopPropagation()
   if (lightboxZoom < 1.5) {
@@ -174,7 +178,6 @@ lightboxZoomWrap.addEventListener('dblclick', (e) => {
   applyLightboxTransform()
 })
 
-// 트랙패드 두손가락 스퀴즈 (wheel + ctrlKey)
 lightboxEl.addEventListener('wheel', (e) => {
   if (!lightboxEl.classList.contains('active')) return
   if (e.ctrlKey) {
@@ -185,7 +188,6 @@ lightboxEl.addEventListener('wheel', (e) => {
   }
 }, { passive: false })
 
-// 터치 두손가락 스퀴즈
 let touchStartDist = 0
 let touchStartZoom = 1
 
@@ -211,7 +213,6 @@ lightboxZoomWrap.addEventListener('touchmove', (e) => {
   }
 }, { passive: false })
 
-// 드래그로 패닝 (줌된 상태에서)
 let isDragging = false
 let dragStartX = 0
 let dragStartY = 0
@@ -236,11 +237,8 @@ document.addEventListener('mouseup', () => {
   isDragging = false
 })
 
-// 물고기 이름/체크박스 변경 시 미리보기 갱신
 inputFishName.addEventListener('input', updateFilenamePreview)
-inputFishName.addEventListener('input', debouncedSaveDefaults)
 
-// 키보드: Enter로 파일명 변경 + 다음 이미지, 화살표로 이전/다음, ESC로 확대 뷰어 닫기
 document.addEventListener('keydown', (e) => {
   if (e.key === 'Escape') {
     closeLightbox()
@@ -266,10 +264,10 @@ chkUncertain.addEventListener('change', updateFilenamePreview)
 
 async function loadImages() {
   if (!currentFolder) return
-  imageFiles = await window.api.readFiles(currentFolder)
+  imageFiles = await invoke('read_files', { folderPath: currentFolder })
   currentIndex = 0
-  for (const k of Object.keys(fishInputCache)) delete fishInputCache[k]
-  for (const k of Object.keys(parsedCache)) delete parsedCache[k]
+  fishInputCache = {}
+  parsedCache = {}
   renameCount = 0
   skipCount = 0
   btnReload.disabled = false
@@ -297,7 +295,7 @@ async function renameCurrentIfReady() {
   const oldName = imageFiles[currentIndex]
   if (oldName === newName) return
   try {
-    const result = await window.api.renameFile({ folderPath: currentFolder, oldName, newName })
+    const result = await invoke('rename_file', { folderPath: currentFolder, oldName, newName })
     if (result.success) {
       if (parsedCache[oldName]) {
         parsedCache[newName] = parsedCache[oldName]
@@ -344,13 +342,13 @@ async function showCurrentImage() {
 
   if (isVideo) {
     videoPreviewEl.pause()
-    const fileUrl = await window.api.getFileUrl(currentFolder, fileName)
-    videoPreviewEl.src = fileUrl
+    const filePath = await invoke('get_file_url', { folderPath: currentFolder, fileName })
+    videoPreviewEl.src = convertFileSrc(filePath)
     videoPreviewEl.classList.remove('hidden')
     imagePreviewEl.src = ''
     imagePreviewEl.classList.add('hidden')
   } else {
-    const dataUrl = await window.api.getImageData(currentFolder, fileName)
+    const dataUrl = await invoke('get_image_data', { folderPath: currentFolder, fileName })
     imagePreviewEl.src = dataUrl || ''
     imagePreviewEl.alt = fileName
     imagePreviewEl.classList.remove('hidden')
@@ -369,7 +367,6 @@ async function showCurrentImage() {
     parsedCache[fileName] = parsed
   }
 
-  // 물고기 입력: 저장된 값이 있으면 복원, 없으면 파싱 또는 빈값
   const cached = fishInputCache[fileName]
   if (cached) {
     inputFishName.value = cached.fishName
@@ -388,7 +385,6 @@ async function showCurrentImage() {
     chkUncertain.checked = false
   }
 
-  // 기본정보는 파싱된 파일에서 유의미한 값이 있을 때만 채움
   if (parsed && (parsed.pointName || parsed.photographer || parsed.shootDate)) {
     if (parsed.pointPrefix != null) inputPointPrefix.value = parsed.pointPrefix
     inputPointName.value = parsed.pointName || ''
@@ -407,7 +403,6 @@ function getEffectivePointName() {
   return chkNight.checked ? base + 'N' : base
 }
 
-/** 파일명 생성: 에디터 값으로 round-trip. {원본}_{물고기}_[포인트]_[촬영자]_[날짜].확장자 */
 function buildNewFilename() {
   if (!imageFiles.length || currentIndex < 0 || currentIndex >= imageFiles.length) return null
 
@@ -420,7 +415,7 @@ function buildNewFilename() {
   } else if (fishRaw) {
     fishName = fishRaw
   } else {
-    return null  // 물고기 이름은 필수
+    return null
   }
 
   const oldName = imageFiles[currentIndex]
@@ -443,7 +438,6 @@ function buildNewFilename() {
   return parts.join('_') + ext
 }
 
-/** 유연 파서: 끝에서부터 역순으로 날짜/촬영자/지역/물고기 추출 */
 const KNOWN_PREFIXES = ['남애', '북애', '동애', '서애', '속초', '고성']
 
 function is8DigitDate(s) {
@@ -464,20 +458,15 @@ function isPointPart(s) {
 
 function isFishPart(s) {
   if (!s) return false
-  if (/^\(.+\)$/.test(s)) return true  // (물고기), (노래미)
+  if (/^\(.+\)$/.test(s)) return true
   if (/[가-힣ㄱ-ㅎㅏ-ㅣ]/.test(s)) return true
   return false
 }
 
-/** 카메라 원본 코드인지 판별 (영문+숫자, 숫자만, IMG_1234 등) */
 function isCameraCode(s) {
   return /^[A-Za-z0-9\-]+$/.test(s)
 }
 
-/**
- * 앞에서부터 카메라 코드(originalBase)를 먼저 분리하고,
- * 나머지를 뒤에서부터 날짜/촬영자/포인트/물고기 순으로 파싱.
- */
 function parseExistingFilename(nameWithoutExt) {
   const parts = nameWithoutExt.split('_').filter(Boolean)
   if (parts.length === 0) return null
@@ -492,7 +481,6 @@ function parseExistingFilename(nameWithoutExt) {
     shootDate: null
   }
 
-  // 앞에서부터 카메라 코드 수집
   let front = 0
   while (front < parts.length && isCameraCode(parts[front]) && !is8DigitDate(parts[front])) {
     front++
@@ -501,7 +489,6 @@ function parseExistingFilename(nameWithoutExt) {
 
   result.originalBase = parts.slice(0, front).join('_')
 
-  // 나머지를 뒤에서부터 파싱
   let i = parts.length - 1
 
   if (i >= front && is8DigitDate(parts[i])) {
@@ -539,7 +526,6 @@ function parseExistingFilename(nameWithoutExt) {
   return result
 }
 
-/** 파일명에서 카메라 원본 코드만 추출 (캐시 없이 사용) */
 function extractOriginalBase(fileName) {
   const nameWithoutExt = fileName.includes('.') ? fileName.substring(0, fileName.lastIndexOf('.')) : fileName
   const parts = nameWithoutExt.split('_').filter(Boolean)
@@ -576,10 +562,10 @@ function updateNavState() {
 async function skipCurrent() {
   if (!imageFiles.length || !currentFolder) return
   const fileName = imageFiles[currentIndex]
-  const result = await window.api.moveToSkip({ folderPath: currentFolder, fileName })
+  const result = await invoke('move_to_skip', { folderPath: currentFolder, fileName })
   if (result.success) {
     skipCount++
-    imageFiles = await window.api.readFiles(currentFolder)
+    imageFiles = await invoke('read_files', { folderPath: currentFolder })
     currentIndex = Math.min(currentIndex, Math.max(0, imageFiles.length - 1))
     statusLeft.textContent = `스킵: ${fileName} → Skip 폴더`
     await showCurrentImage()
@@ -588,7 +574,6 @@ async function skipCurrent() {
   }
 }
 
-/** 기본정보 미입력 항목 반환 (물고기만 필수, 나머지는 선택) */
 function getMissingBasicInfo() {
   const missing = []
   const fishRaw = inputFishName.value.trim()
@@ -620,7 +605,7 @@ async function applyAndNext() {
 
   isApplying = true
   try {
-    const result = await window.api.renameFile({ folderPath: currentFolder, oldName, newName })
+    const result = await invoke('rename_file', { folderPath: currentFolder, oldName, newName })
 
     if (result.success) {
       if (parsedCache[oldName]) {
@@ -667,12 +652,14 @@ function closeLightbox() {
 }
 
 function saveDefaults() {
-  window.api.saveDefaults({
-    pointPrefix: inputPointPrefix.value,
-    pointName: inputPointName.value,
-    photographerName: inputPhotographer.value,
-    shootDate: inputShootDate.value,
-    nightMode: chkNight.checked
+  invoke('save_defaults', {
+    defaults: {
+      pointPrefix: inputPointPrefix.value,
+      pointName: inputPointName.value,
+      photographerName: inputPhotographer.value,
+      shootDate: inputShootDate.value,
+      nightMode: chkNight.checked
+    }
   })
 }
 

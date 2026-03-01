@@ -1,6 +1,7 @@
 const { contextBridge, ipcRenderer } = require('electron')
 
 contextBridge.exposeInMainWorld('api', {
+  openHelp: () => ipcRenderer.invoke('open-help'),
   selectFolder: () => ipcRenderer.invoke('select-folder'),
   readFiles: (folderPath) => ipcRenderer.invoke('read-files', folderPath),
   getImageData: (folderPath, fileName) => ipcRenderer.invoke('get-image-data', folderPath, fileName),

@@ -5,9 +5,10 @@ const { pathToFileURL } = require('url')
 const convert = require('heic-convert')
 
 const SRC_DIR = path.join(__dirname, 'src')
+let mainWindow = null
 
 function createWindow() {
-  const win = new BrowserWindow({
+  mainWindow = new BrowserWindow({
     width: 1200,
     height: 900,
     webPreferences: {
@@ -18,7 +19,24 @@ function createWindow() {
     title: '파일 이름 변경'
   })
 
-  win.loadFile(path.join(SRC_DIR, 'index.html'))
+  mainWindow.loadFile(path.join(SRC_DIR, 'index.html'))
+}
+
+function openHelpWindow() {
+  const helpWin = new BrowserWindow({
+    width: 560,
+    height: 720,
+    parent: mainWindow,
+    modal: false,
+    backgroundColor: '#0f1419',
+    webPreferences: {
+      contextIsolation: true,
+      nodeIntegration: false
+    },
+    title: '사용 도움말 - 파일 이름 변경'
+  })
+  helpWin.loadFile(path.join(SRC_DIR, 'help.html'))
+  helpWin.setMenuBarVisibility(false)
 }
 
 app.whenReady().then(createWindow)
@@ -29,6 +47,11 @@ app.on('window-all-closed', () => {
 
 app.on('activate', () => {
   if (BrowserWindow.getAllWindows().length === 0) createWindow()
+})
+
+// 도움말 창 열기
+ipcMain.handle('open-help', () => {
+  openHelpWindow()
 })
 
 // 폴더 선택

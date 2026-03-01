@@ -60,6 +60,11 @@ const lightboxZoomValue = document.getElementById('lightboxZoomValue')
 
 // ── 이벤트 ────────────────────────────────────────────────
 
+document.getElementById('btnHelp').addEventListener('click', (e) => {
+  e.preventDefault()
+  window.api.openHelp()
+})
+
 btnSelect.addEventListener('click', async () => {
   const folder = await window.api.selectFolder()
   if (!folder) return
@@ -627,9 +632,9 @@ async function applyAndNext() {
         currentIndex++
         await showCurrentImage()
       } else {
-        inputFishName.value = ''
         updateFilenamePreview()
         updateNavState()
+        alert(`마지막 사진입니다. (총 ${imageFiles.length}개 완료)`)
       }
     } else {
       statusLeft.textContent = `오류: ${result.error}`

@@ -5,7 +5,7 @@
   "main": "main.js",
   "author": "",
   "scripts": {
-    "start": "electron .",
+    "start": "env -u ELECTRON_RUN_AS_NODE electron .",
     "build": "electron-builder",
     "build:mac": "electron-builder --mac",
     "build:win": "electron-builder --win"
@@ -22,10 +22,7 @@
     },
     "files": [
       "main.js",
-      "preload.js",
-      "index.html",
-      "styles.css",
-      "renderer.js"
+      "src/**/*"
     ],
     "mac": {
       "category": "public.app-category.utilities",

@@ -3,19 +3,21 @@ const path = require('path')
 const fs = require('fs')
 const convert = require('heic-convert')
 
+const SRC_DIR = path.join(__dirname, 'src')
+
 function createWindow() {
   const win = new BrowserWindow({
     width: 1200,
     height: 900,
     webPreferences: {
-      preload: path.join(__dirname, 'preload.js'),
+      preload: path.join(SRC_DIR, 'preload.js'),
       contextIsolation: true,
       nodeIntegration: false
     },
     title: '파일 이름 변경'
   })
 
-  win.loadFile(path.join(__dirname, 'index.html'))
+  win.loadFile(path.join(SRC_DIR, 'index.html'))
 }
 
 app.whenReady().then(createWindow)

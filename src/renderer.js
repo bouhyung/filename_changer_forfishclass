@@ -2,7 +2,7 @@ let currentFolder = null
 let imageFiles = []      // 이미지 파일명 배열
 let currentIndex = 0     // 현재 보고 있는 이미지 인덱스
 const fishInputCache = {}  // 파일명별 물고기 입력 저장 (이전/다음 이동 시 복원)
-const originalBaseCache = {}  // 파일명별 원본 base 캐시 (파일명 생성 시 사용)
+const parsedCache = {}  // 파일명별 파싱 결과 캐시 (originalBase, fishName 등)
 
 const folderPathEl      = document.getElementById('folderPath')
 const headerStatsEl     = document.getElementById('headerStats')
@@ -233,7 +233,7 @@ async function loadImages() {
   imageFiles = await window.api.readFiles(currentFolder)
   currentIndex = 0
   for (const k of Object.keys(fishInputCache)) delete fishInputCache[k]
-  for (const k of Object.keys(originalBaseCache)) delete originalBaseCache[k]
+  for (const k of Object.keys(parsedCache)) delete parsedCache[k]
   btnReload.disabled = false
   btnPrev.disabled = false
   btnNext.disabled = false
@@ -261,10 +261,9 @@ async function renameCurrentIfReady() {
   try {
     const result = await window.api.renameFile({ folderPath: currentFolder, oldName, newName })
     if (result.success) {
-      const cachedBase = originalBaseCache[oldName]
-      if (cachedBase) {
-        originalBaseCache[newName] = cachedBase
-        delete originalBaseCache[oldName]
+      if (parsedCache[oldName]) {
+        parsedCache[newName] = parsedCache[oldName]
+        delete parsedCache[oldName]
       }
       if (fishInputCache[oldName]) delete fishInputCache[oldName]
       imageFiles[currentIndex] = newName
@@ -307,11 +306,13 @@ async function showCurrentImage() {
   imagePreviewEl.alt = fileName
 
   const nameWithoutExt = fileName.includes('.') ? fileName.substring(0, fileName.lastIndexOf('.')) : fileName
-  const parsed = parseExistingFilename(nameWithoutExt)
-
-  // 원본 base 캐시: 최초 로드 시 한 번만 계산
-  if (!(fileName in originalBaseCache)) {
-    originalBaseCache[fileName] = extractOriginalBaseName(nameWithoutExt)
+  let parsed = parsedCache[fileName]
+  if (!parsed) {
+    parsed = parseExistingFilename(nameWithoutExt)
+    if (!parsed) {
+      parsed = { originalBase: nameWithoutExt, fishName: null, pointPrefix: '', pointName: '', pointNameEndsWithN: false, photographer: null, shootDate: null }
+    }
+    parsedCache[fileName] = parsed
   }
 
   // 물고기 입력: 저장된 값이 있으면 복원, 없으면 파싱 또는 빈값
@@ -320,12 +321,12 @@ async function showCurrentImage() {
     inputFishName.value = cached.fishName
     chkJuvenile.checked = cached.chkJuvenile
     chkUncertain.checked = cached.chkUncertain
-  } else if (parsed) {
+  } else if (parsed && parsed.fishName) {
     let displayName = parsed.fishName
     chkJuvenile.checked = displayName.endsWith('J')
-    chkUncertain.checked = /^\(.+\)$/.test(displayName)  // (물고기) 또는 (노래미) 등
+    chkUncertain.checked = /^\(.+\)$/.test(displayName)
     if (chkJuvenile.checked) displayName = displayName.slice(0, -1)
-    if (chkUncertain.checked) displayName = displayName.replace(/^\(|\)$/g, '')  // 괄호 제거
+    if (chkUncertain.checked) displayName = displayName.replace(/^\(|\)$/g, '')
     inputFishName.value = displayName === '물고기' ? '' : displayName
   } else {
     inputFishName.value = ''
@@ -333,13 +334,13 @@ async function showCurrentImage() {
     chkUncertain.checked = false
   }
 
-  // 기본정보는 파싱된 파일에서만 채움
-  if (parsed) {
+  // 기본정보는 파싱된 파일에서 유의미한 값이 있을 때만 채움
+  if (parsed && (parsed.pointName || parsed.photographer || parsed.shootDate)) {
     if (parsed.pointPrefix != null) inputPointPrefix.value = parsed.pointPrefix
-    inputPointName.value = parsed.pointName
+    inputPointName.value = parsed.pointName || ''
     chkNight.checked = parsed.pointNameEndsWithN
-    inputPhotographer.value = parsed.photographer
-    inputShootDate.value = parsed.shootDate
+    inputPhotographer.value = parsed.photographer || ''
+    inputShootDate.value = parsed.shootDate || ''
   }
 
   updateFilenamePreview()
@@ -352,46 +353,102 @@ function getEffectivePointName() {
   return chkNight.checked ? base + 'N' : base
 }
 
-/** 파일명 생성: {원본}_{물고기}_{접두사+포인트}_{촬영자}_{촬영일자}.확장자 */
+/** 파일명 생성: 에디터 값으로 round-trip. {원본}_{물고기}_[포인트]_[촬영자]_[날짜].확장자 */
 function buildNewFilename() {
+  if (!imageFiles.length || currentIndex < 0 || currentIndex >= imageFiles.length) return null
+
   const fishRaw = inputFishName.value.trim()
   let fishName
   if (chkUncertain.checked) {
-    fishName = fishRaw ? `(${fishRaw})` : '(물고기)'  // 이름 불명확/모름: (노래미) 또는 (물고기)
+    fishName = fishRaw ? `(${fishRaw})` : '(물고기)'
   } else if (fishRaw && chkJuvenile.checked) {
     fishName = fishRaw + 'J'
   } else if (fishRaw) {
     fishName = fishRaw
   } else {
-    return null  // 물고기 이름 없으면 생성 안 함
+    return null  // 물고기 이름은 필수
   }
-
-  const pointBase = inputPointName.value.trim()
-  if (!pointBase) return null
-  const prefix = inputPointPrefix.value.trim()
-  const pointName = prefix + getEffectivePointName()
-  const photographer = inputPhotographer.value.trim()
-  const shootDate = inputShootDate.value.trim()
-  if (!photographer || !shootDate) return null
 
   const oldName = imageFiles[currentIndex]
   const ext = oldName.includes('.') ? oldName.substring(oldName.lastIndexOf('.')) : '.jpg'
 
-  // 캐시된 원본 base 사용 (showCurrentImage에서 최초 1회 계산)
-  const originalBase = originalBaseCache[oldName] || extractOriginalBaseName(
+  const parsed = parsedCache[oldName]
+  const originalBase = parsed ? parsed.originalBase : (
     oldName.includes('.') ? oldName.substring(0, oldName.lastIndexOf('.')) : oldName
   )
 
-  return `${originalBase}_${fishName}_${pointName}_${photographer}_${shootDate}${ext}`
+  const parts = [originalBase, fishName]
+  const pointBase = inputPointName.value.trim()
+  const prefix = inputPointPrefix.value.trim()
+  if (pointBase) {
+    parts.push(prefix + getEffectivePointName())
+  }
+  const photographer = inputPhotographer.value.trim()
+  if (photographer) parts.push(photographer)
+  const shootDate = inputShootDate.value.trim()
+  if (shootDate) parts.push(shootDate)
+
+  return parts.join('_') + ext
 }
 
-/** 규칙 형식 파일에서 메타데이터 추출 (미리 채우기용) */
+/** 유연 파서: 끝에서부터 역순으로 날짜/촬영자/지역/물고기 추출 */
 const KNOWN_PREFIXES = ['남애', '북애', '동애', '서애', '속초', '고성']
 
+function is8DigitDate(s) {
+  return /^\d{8}$/.test(s)
+}
+
+function isPhotographer(s) {
+  return /^[가-힣]{2,4}$/.test(s) && !s.includes('물') && !s.includes('고기')
+}
+
+function isPointPart(s) {
+  if (!s || /^\d+$/.test(s)) return false
+  for (const p of KNOWN_PREFIXES) {
+    if (s.startsWith(p)) return true
+  }
+  return false
+}
+
+function isFishPart(s) {
+  if (!s) return false
+  if (/^\(.+\)$/.test(s)) return true  // (물고기), (노래미)
+  if (/[가-힣ㄱ-ㅎㅏ-ㅣ]/.test(s)) return true
+  return false
+}
+
 function parseExistingFilename(nameWithoutExt) {
-  const parts = nameWithoutExt.split('_')
-  if (parts.length >= 5 && /^\d{8}$/.test(parts[parts.length - 1])) {
-    const pointFull = parts[parts.length - 3]  // 남애팔각어초N
+  const parts = nameWithoutExt.split('_').filter(Boolean)
+  if (parts.length === 0) return null
+
+  const result = {
+    originalBase: '',
+    fishName: null,
+    pointPrefix: '',
+    pointName: '',
+    pointNameEndsWithN: false,
+    photographer: null,
+    shootDate: null
+  }
+
+  let i = parts.length - 1
+
+  // 1. 끝이 8자리 날짜?
+  if (i >= 0 && is8DigitDate(parts[i])) {
+    result.shootDate = parts[i]
+    i--
+  }
+
+  // 2. 그 앞이 촬영자?(한글 2~4자)
+  if (i >= 0 && isPhotographer(parts[i]) && !KNOWN_PREFIXES.some(p => parts[i].startsWith(p))) {
+    result.photographer = parts[i]
+    i--
+  }
+
+  // 3. 그 앞이 지역/포인트?
+  if (i >= 0 && isPointPart(parts[i])) {
+    const pointFull = parts[i]
+    result.pointNameEndsWithN = pointFull.endsWith('N')
     let pointBase = pointFull.replace(/N$/, '')
     let detectedPrefix = ''
     for (const p of KNOWN_PREFIXES) {
@@ -401,35 +458,20 @@ function parseExistingFilename(nameWithoutExt) {
         break
       }
     }
-    return {
-      fishName: parts[parts.length - 4],
-      pointPrefix: detectedPrefix,
-      pointName: pointBase,
-      pointNameEndsWithN: pointFull.endsWith('N'),
-      photographer: parts[parts.length - 2],
-      shootDate: parts[parts.length - 1]
-    }
-  }
-  return null
-}
-
-/** 원본 파일명만 추출: 규칙 형식(물고기_포인트_촬영자_8자리일자)과 이전 물고기 분류 제거 */
-function extractOriginalBaseName(nameWithoutExt) {
-  const parts = nameWithoutExt.split('_')
-
-  // 끝에서 규칙 형식(물고기_포인트_촬영자_8자리일자)을 반복 제거
-  while (parts.length >= 5 && /^\d{8}$/.test(parts[parts.length - 1])) {
-    parts.splice(-4)
+    result.pointPrefix = detectedPrefix
+    result.pointName = pointBase
+    i--
   }
 
-  // 끝에서 한글이 포함된 파트(이전 물고기 분류)를 제거
-  // 카메라 원본: P9060063, DSC_9426 등 (숫자/영문)만 남김
-  while (parts.length >= 2 && /[가-힣ㄱ-ㅎㅏ-ㅣ()]/.test(parts[parts.length - 1])) {
-    parts.pop()
+  // 4. 그 앞이 물고기?
+  if (i >= 0 && isFishPart(parts[i])) {
+    result.fishName = parts[i]
+    i--
   }
 
-  const result = parts.length > 0 ? parts.join('_') : nameWithoutExt
-  console.log('[extractOriginalBaseName]', nameWithoutExt, '→', result)
+  // 5. 남은 앞부분 = originalBase
+  result.originalBase = i >= 0 ? parts.slice(0, i + 1).join('_') : parts[0] || ''
+
   return result
 }
 
@@ -469,12 +511,9 @@ async function skipCurrent() {
   }
 }
 
-/** 기본정보 미입력 항목 반환 (빈 배열이면 모두 입력됨) */
+/** 기본정보 미입력 항목 반환 (물고기만 필수, 나머지는 선택) */
 function getMissingBasicInfo() {
   const missing = []
-  if (!inputPointName.value.trim()) missing.push('포인트이름')
-  if (!inputPhotographer.value.trim()) missing.push('촬영자이름')
-  if (!inputShootDate.value.trim()) missing.push('촬영일자')
   const fishRaw = inputFishName.value.trim()
   if (!chkUncertain.checked && !fishRaw) missing.push('물고기 이름')
   return missing
@@ -491,8 +530,6 @@ async function applyAndNext() {
   if (!newName || !currentFolder) return
 
   const oldName = imageFiles[currentIndex]
-  console.log('[applyAndNext] oldName:', oldName, '→ newName:', newName)
-
   if (oldName === newName) {
     statusLeft.textContent = '변경사항 없음 (동일한 파일명)'
     if (currentIndex < imageFiles.length - 1) {
@@ -504,14 +541,11 @@ async function applyAndNext() {
 
   try {
     const result = await window.api.renameFile({ folderPath: currentFolder, oldName, newName })
-    console.log('[applyAndNext] result:', JSON.stringify(result))
 
     if (result.success) {
-      // 원본 base 캐시를 새 파일명에도 연결
-      const cachedBase = originalBaseCache[oldName]
-      if (cachedBase) {
-        originalBaseCache[newName] = cachedBase
-        delete originalBaseCache[oldName]
+      if (parsedCache[oldName]) {
+        parsedCache[newName] = parsedCache[oldName]
+        delete parsedCache[oldName]
       }
       if (fishInputCache[oldName]) {
         delete fishInputCache[oldName]

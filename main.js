@@ -1,6 +1,7 @@
 const { app, BrowserWindow, ipcMain, dialog } = require('electron')
 const path = require('path')
 const fs = require('fs')
+const { pathToFileURL } = require('url')
 const convert = require('heic-convert')
 
 const SRC_DIR = path.join(__dirname, 'src')
@@ -50,20 +51,25 @@ const IMAGE_EXT = [
   '.pef', '.ptx',            // Pentax RAW
 ]
 
+const VIDEO_EXT = ['.mp4', '.mov', '.avi', '.mkv', '.webm', '.m4v']
+
+const MEDIA_EXT = [...IMAGE_EXT, ...VIDEO_EXT]
+
 // 미리보기 불가 포맷 (RAW만 - HEIC는 변환하여 미리보기)
 const NO_PREVIEW_EXT = ['.orf', '.ori', '.cr2', '.cr3', '.arw', '.arw2', '.srf', '.sr2', '.nef', '.nrw', '.nr2', '.dng', '.rw2', '.raf', '.pef', '.ptx']
 
-// 이미지 파일 목록 읽기
+// 이미지/동영상 파일 목록 읽기
 ipcMain.handle('read-files', async (_, folderPath) => {
   const entries = fs.readdirSync(folderPath, { withFileTypes: true })
   return entries
-    .filter(e => e.isFile() && IMAGE_EXT.includes(path.extname(e.name).toLowerCase()))
+    .filter(e => e.isFile() && MEDIA_EXT.includes(path.extname(e.name).toLowerCase()))
     .map(e => e.name)
 })
 
-// 이미지 데이터 로드 (base64 data URL)
+// 이미지 데이터 로드 (base64 data URL) - 이미지 전용
 ipcMain.handle('get-image-data', async (_, folderPath, fileName) => {
   const ext = path.extname(fileName).toLowerCase()
+  if (VIDEO_EXT.includes(ext)) return null
   const filePath = path.join(folderPath, fileName)
 
   // HEIC/HEIF → JPEG 변환 후 미리보기
@@ -93,6 +99,12 @@ ipcMain.handle('get-image-data', async (_, folderPath, fileName) => {
   const mime = mimeMap[ext] || 'application/octet-stream'
   const buf = fs.readFileSync(filePath)
   return `data:${mime};base64,${buf.toString('base64')}`
+})
+
+// 동영상용 파일 URL 반환 (file:// 프로토콜)
+ipcMain.handle('get-file-url', async (_, folderPath, fileName) => {
+  const filePath = path.join(folderPath, fileName)
+  return pathToFileURL(filePath).href
 })
 
 function makePlaceholderSvg(ext) {

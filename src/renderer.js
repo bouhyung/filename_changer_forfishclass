@@ -1,6 +1,13 @@
+const VIDEO_EXT = ['.mp4', '.mov', '.avi', '.mkv', '.webm', '.m4v']
+
+function isVideoFile(fileName) {
+  const ext = fileName.includes('.') ? fileName.substring(fileName.lastIndexOf('.')).toLowerCase() : ''
+  return VIDEO_EXT.includes(ext)
+}
+
 let currentFolder = null
-let imageFiles = []      // 이미지 파일명 배열
-let currentIndex = 0     // 현재 보고 있는 이미지 인덱스
+let imageFiles = []      // 이미지/동영상 파일명 배열
+let currentIndex = 0     // 현재 보고 있는 파일 인덱스
 const fishInputCache = {}  // 파일명별 물고기 입력 저장 (이전/다음 이동 시 복원)
 const parsedCache = {}  // 파일명별 파싱 결과 캐시 (originalBase, fishName 등)
 
@@ -8,6 +15,7 @@ const folderPathEl      = document.getElementById('folderPath')
 const headerStatsEl     = document.getElementById('headerStats')
 const emptyStateEl     = document.getElementById('emptyState')
 const imagePreviewEl   = document.getElementById('imagePreview')
+const videoPreviewEl   = document.getElementById('videoPreview')
 const inputFishName    = document.getElementById('inputFishName')
 const chkJuvenile      = document.getElementById('chkJuvenile')
 const chkUncertain     = document.getElementById('chkUncertain')
@@ -28,6 +36,7 @@ const statusLeft      = document.getElementById('statusLeft')
 const statusRight     = document.getElementById('statusRight')
 const lightboxEl       = document.getElementById('lightbox')
 const lightboxImageEl  = document.getElementById('lightboxImage')
+const lightboxVideoEl  = document.getElementById('lightboxVideo')
 const lightboxZoomWrap = document.getElementById('lightboxZoomWrap')
 const lightboxBackdrop = document.querySelector('.lightbox-backdrop')
 const lightboxZoomIn   = document.getElementById('lightboxZoomIn')
@@ -91,7 +100,27 @@ chkNight.addEventListener('change', updateFilenamePreview)
 // 이미지 클릭 시 확대 뷰어
 imagePreviewEl.addEventListener('click', () => {
   if (imagePreviewEl.src && !imagePreviewEl.classList.contains('hidden')) {
+    lightboxVideoEl.classList.add('hidden')
+    lightboxVideoEl.pause()
+    lightboxVideoEl.removeAttribute('src')
     lightboxImageEl.src = imagePreviewEl.src
+    lightboxImageEl.classList.remove('hidden')
+    lightboxZoom = 1
+    lightboxX = 0
+    lightboxY = 0
+    applyLightboxTransform()
+    lightboxEl.classList.add('active')
+  }
+})
+
+// 동영상 클릭 시 라이트박스에서 재생
+videoPreviewEl.addEventListener('click', () => {
+  if (videoPreviewEl.src && !videoPreviewEl.classList.contains('hidden')) {
+    lightboxImageEl.removeAttribute('src')
+    lightboxImageEl.classList.add('hidden')
+    lightboxVideoEl.src = videoPreviewEl.src
+    lightboxVideoEl.classList.remove('hidden')
+    lightboxVideoEl.play()
     lightboxZoom = 1
     lightboxX = 0
     lightboxY = 0
@@ -238,7 +267,7 @@ async function loadImages() {
   btnPrev.disabled = false
   btnNext.disabled = false
   btnSkip.disabled = !imageFiles.length
-  headerStatsEl.textContent = imageFiles.length ? `${imageFiles.length}개 이미지` : '이미지 없음'
+  headerStatsEl.textContent = imageFiles.length ? `${imageFiles.length}개 미디어` : '미디어 없음'
   statusLeft.textContent = imageFiles.length ? `총 ${imageFiles.length}개` : '준비'
   await showCurrentImage()
 }
@@ -287,6 +316,9 @@ async function showCurrentImage() {
     emptyStateEl.classList.remove('hidden')
     imagePreviewEl.classList.add('hidden')
     imagePreviewEl.src = ''
+    videoPreviewEl.classList.add('hidden')
+    videoPreviewEl.pause()
+    videoPreviewEl.removeAttribute('src')
     filenamePreviewEl.textContent = ''
     viewerIndexEl.textContent = '0 / 0'
     btnPrev.disabled = true
@@ -296,14 +328,27 @@ async function showCurrentImage() {
   }
 
   btnSkip.disabled = false
-
   emptyStateEl.classList.add('hidden')
-  imagePreviewEl.classList.remove('hidden')
 
   const fileName = imageFiles[currentIndex]
-  const dataUrl = await window.api.getImageData(currentFolder, fileName)
-  imagePreviewEl.src = dataUrl
-  imagePreviewEl.alt = fileName
+  const isVideo = isVideoFile(fileName)
+
+  if (isVideo) {
+    videoPreviewEl.pause()
+    const fileUrl = await window.api.getFileUrl(currentFolder, fileName)
+    videoPreviewEl.src = fileUrl
+    videoPreviewEl.classList.remove('hidden')
+    imagePreviewEl.src = ''
+    imagePreviewEl.classList.add('hidden')
+  } else {
+    const dataUrl = await window.api.getImageData(currentFolder, fileName)
+    imagePreviewEl.src = dataUrl || ''
+    imagePreviewEl.alt = fileName
+    imagePreviewEl.classList.remove('hidden')
+    videoPreviewEl.pause()
+    videoPreviewEl.removeAttribute('src')
+    videoPreviewEl.classList.add('hidden')
+  }
 
   const nameWithoutExt = fileName.includes('.') ? fileName.substring(0, fileName.lastIndexOf('.')) : fileName
   let parsed = parsedCache[fileName]
@@ -519,7 +564,9 @@ function getMissingBasicInfo() {
   return missing
 }
 
+let isApplying = false
 async function applyAndNext() {
+  if (isApplying) return
   const missing = getMissingBasicInfo()
   if (missing.length > 0) {
     alert(`다음 항목을 입력해주세요:\n\n• ${missing.join('\n• ')}`)
@@ -539,6 +586,7 @@ async function applyAndNext() {
     return
   }
 
+  isApplying = true
   try {
     const result = await window.api.renameFile({ folderPath: currentFolder, oldName, newName })
 
@@ -569,6 +617,8 @@ async function applyAndNext() {
     console.error('[applyAndNext] exception:', err)
     statusLeft.textContent = `오류: ${err.message}`
     alert(`파일 이름 변경 중 예외 발생:\n${err.message}`)
+  } finally {
+    isApplying = false
   }
 }
 
@@ -576,6 +626,9 @@ async function applyAndNext() {
 
 function closeLightbox() {
   lightboxEl.classList.remove('active')
+  lightboxVideoEl.pause()
+  lightboxVideoEl.removeAttribute('src')
+  lightboxVideoEl.classList.add('hidden')
   lightboxZoom = 1
   lightboxX = 0
   lightboxY = 0

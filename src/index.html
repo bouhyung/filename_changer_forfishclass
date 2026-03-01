@@ -2,7 +2,7 @@
 <html lang="ko">
 <head>
   <meta charset="UTF-8" />
-  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:" />
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; media-src 'self' file:" />
   <title>파일 이름 변경</title>
   <link rel="stylesheet" href="styles.css" />
 </head>
@@ -59,9 +59,10 @@
           <svg width="80" height="80" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
             <path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/>
           </svg>
-          <span>폴더를 선택하면 이미지가 표시됩니다</span>
+          <span>폴더를 선택하면 이미지/동영상이 표시됩니다</span>
         </div>
-        <img id="imagePreview" class="image-preview hidden" alt="" title="클릭하여 확대" />
+        <img id="imagePreview" class="media-preview hidden" alt="" title="클릭하여 확대" />
+        <video id="videoPreview" class="media-preview hidden" controls playsinline muted loop title="클릭하여 확대"></video>
       </div>
 
       <div class="viewer-controls">
@@ -96,6 +97,7 @@
   <div class="lightbox-backdrop"></div>
   <div class="lightbox-zoom-wrap" id="lightboxZoomWrap">
     <img class="lightbox-image" id="lightboxImage" alt="" />
+    <video class="lightbox-video hidden" id="lightboxVideo" controls playsinline></video>
   </div>
   <div class="lightbox-zoom-btns">
     <button type="button" class="lightbox-btn" id="lightboxZoomOut" title="축소">−</button>

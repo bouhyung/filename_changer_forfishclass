@@ -10,6 +10,8 @@ let imageFiles = []      // 이미지/동영상 파일명 배열
 let currentIndex = 0     // 현재 보고 있는 파일 인덱스
 const fishInputCache = {}  // 파일명별 물고기 입력 저장 (이전/다음 이동 시 복원)
 const parsedCache = {}  // 파일명별 파싱 결과 캐시 (originalBase, fishName 등)
+let renameCount = 0     // 이름 변경 횟수
+let skipCount = 0       // 스킵 횟수
 
 const folderPathEl      = document.getElementById('folderPath')
 const headerStatsEl     = document.getElementById('headerStats')
@@ -268,6 +270,8 @@ async function loadImages() {
   currentIndex = 0
   for (const k of Object.keys(fishInputCache)) delete fishInputCache[k]
   for (const k of Object.keys(parsedCache)) delete parsedCache[k]
+  renameCount = 0
+  skipCount = 0
   btnReload.disabled = false
   btnPrev.disabled = false
   btnNext.disabled = false
@@ -574,6 +578,7 @@ async function skipCurrent() {
   const fileName = imageFiles[currentIndex]
   const result = await window.api.moveToSkip({ folderPath: currentFolder, fileName })
   if (result.success) {
+    skipCount++
     imageFiles = await window.api.readFiles(currentFolder)
     currentIndex = Math.min(currentIndex, Math.max(0, imageFiles.length - 1))
     statusLeft.textContent = `스킵: ${fileName} → Skip 폴더`
@@ -626,15 +631,15 @@ async function applyAndNext() {
         delete fishInputCache[oldName]
       }
       imageFiles[currentIndex] = newName
+      renameCount++
       statusLeft.textContent = `변경 완료: ${newName}`
-      // 다음 이미지로 이동
       if (currentIndex < imageFiles.length - 1) {
         currentIndex++
         await showCurrentImage()
       } else {
         updateFilenamePreview()
         updateNavState()
-        alert(`마지막 사진입니다. (총 ${imageFiles.length}개 완료)`)
+        alert(`마지막 사진입니다.\n\n이름 변경: ${renameCount}개 / 스킵: ${skipCount}개`)
       }
     } else {
       statusLeft.textContent = `오류: ${result.error}`

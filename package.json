@@ -6,16 +6,17 @@
   "author": "",
   "scripts": {
     "start": "env -u ELECTRON_RUN_AS_NODE electron .",
-    "build": "npx electron-builder",
-    "build:mac": "npx electron-builder --mac",
-    "build:win": "npx electron-builder --win"
+    "build": "npx electron-builder --publish never && node scripts/remove-blockmap.js",
+    "build:mac": "npx electron-builder --mac --publish never && node scripts/remove-blockmap.js",
+    "build:win": "npx electron-builder --win && node scripts/remove-blockmap.js"
   },
   "devDependencies": {
-    "electron": "^29.0.0"
+    "electron": "^29.0.0",
+    "electron-builder": "^26.8.1"
   },
   "build": {
     "appId": "com.file-rename.app",
-    "productName": "파일 이름 변경",
+    "productName": "File Arrange for Fish Class",
     "directories": {
       "output": "dist"
     },
@@ -38,7 +39,11 @@
     },
     "nsis": {
       "oneClick": false,
-      "allowToChangeInstallationDirectory": true
+      "allowToChangeInstallationDirectory": true,
+      "differentialPackage": false
+    },
+    "dmg": {
+      "writeUpdateInfo": false
     }
   },
   "dependencies": {

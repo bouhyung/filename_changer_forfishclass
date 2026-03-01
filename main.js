@@ -16,7 +16,7 @@ function createWindow() {
       contextIsolation: true,
       nodeIntegration: false
     },
-    title: '파일 이름 변경'
+    title: 'File Arrange for Fish Class'
   })
 
   mainWindow.loadFile(path.join(SRC_DIR, 'index.html'))
@@ -33,7 +33,7 @@ function openHelpWindow() {
       contextIsolation: true,
       nodeIntegration: false
     },
-    title: '사용 도움말 - 파일 이름 변경'
+    title: '사용 도움말 - File Arrange for Fish Class'
   })
   helpWin.loadFile(path.join(SRC_DIR, 'help.html'))
   helpWin.setMenuBarVisibility(false)

@@ -1,4 +1,4 @@
-# 파일 이름 변경 앱
+# File Arrange for Fish Class
 
 양양 물고기반 공유 폴더 업로드용 파일 이름 일괄 변경 앱입니다.
 
@@ -35,8 +35,8 @@ npm run build:mac
 ```
 
 생성 파일 위치: `dist/` 폴더
-- `파일 이름 변경-1.0.0.dmg` — 설치용 디스크 이미지
-- `파일 이름 변경-1.0.0-mac.zip` — 압축 앱 (설치 없이 실행 가능)
+- `File Arrange for Fish Class-1.0.0-arm64.dmg` — 설치용 디스크 이미지 (Apple Silicon)
+- `File Arrange for Fish Class-1.0.0-arm64-mac.zip` — 압축 앱 (설치 없이 실행 가능)
 
 ### Windows용 빌드
 
@@ -45,8 +45,8 @@ npm run build:win
 ```
 
 생성 파일 위치: `dist/` 폴더
-- `파일 이름 변경 Setup 1.0.0.exe` — NSIS 설치 프로그램
-- `파일 이름 변경 1.0.0.exe` — 포터블 실행 파일 (설치 불필요)
+- `File Arrange for Fish Class Setup 1.0.0.exe` — NSIS 설치 프로그램
+- `File Arrange for Fish Class 1.0.0.exe` — 포터블 실행 파일 (설치 불필요)
 
 ### 현재 OS에 맞게 빌드
 

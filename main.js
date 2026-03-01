@@ -7,10 +7,13 @@ const convert = require('heic-convert')
 const SRC_DIR = path.join(__dirname, 'src')
 let mainWindow = null
 
+const ICON_PATH = path.join(__dirname, 'build', 'icon.png')
+
 function createWindow() {
   mainWindow = new BrowserWindow({
     width: 1200,
     height: 900,
+    icon: ICON_PATH,
     webPreferences: {
       preload: path.join(SRC_DIR, 'preload.js'),
       contextIsolation: true,
@@ -28,6 +31,7 @@ function openHelpWindow() {
     height: 720,
     parent: mainWindow,
     modal: false,
+    icon: ICON_PATH,
     backgroundColor: '#0f1419',
     webPreferences: {
       contextIsolation: true,

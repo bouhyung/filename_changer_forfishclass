@@ -17,8 +17,10 @@
   "build": {
     "appId": "com.file-rename.app",
     "productName": "File Arrange for Fish Class",
+    "icon": "build/icon.png",
     "directories": {
-      "output": "dist"
+      "output": "dist",
+      "buildResources": "build"
     },
     "files": [
       "main.js",

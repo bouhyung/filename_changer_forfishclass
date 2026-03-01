@@ -511,6 +511,13 @@ button:disabled {
 .nav-buttons {
   display: flex;
   gap: 10px;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.nav-buttons-left {
+  display: flex;
+  gap: 10px;
 }
 
 .viewer-index {

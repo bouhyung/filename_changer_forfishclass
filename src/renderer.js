@@ -418,9 +418,7 @@ function buildNewFilename() {
   const ext = oldName.includes('.') ? oldName.substring(oldName.lastIndexOf('.')) : '.jpg'
 
   const parsed = parsedCache[oldName]
-  const originalBase = parsed ? parsed.originalBase : (
-    oldName.includes('.') ? oldName.substring(0, oldName.lastIndexOf('.')) : oldName
-  )
+  const originalBase = parsed ? parsed.originalBase : extractOriginalBase(oldName)
 
   const parts = [originalBase, fishName]
   const pointBase = inputPointName.value.trim()
@@ -462,6 +460,15 @@ function isFishPart(s) {
   return false
 }
 
+/** 카메라 원본 코드인지 판별 (영문+숫자, 숫자만, IMG_1234 등) */
+function isCameraCode(s) {
+  return /^[A-Za-z0-9\-]+$/.test(s)
+}
+
+/**
+ * 앞에서부터 카메라 코드(originalBase)를 먼저 분리하고,
+ * 나머지를 뒤에서부터 날짜/촬영자/포인트/물고기 순으로 파싱.
+ */
 function parseExistingFilename(nameWithoutExt) {
   const parts = nameWithoutExt.split('_').filter(Boolean)
   if (parts.length === 0) return null
@@ -476,22 +483,29 @@ function parseExistingFilename(nameWithoutExt) {
     shootDate: null
   }
 
+  // 앞에서부터 카메라 코드 수집
+  let front = 0
+  while (front < parts.length && isCameraCode(parts[front]) && !is8DigitDate(parts[front])) {
+    front++
+  }
+  if (front === 0) front = 1
+
+  result.originalBase = parts.slice(0, front).join('_')
+
+  // 나머지를 뒤에서부터 파싱
   let i = parts.length - 1
 
-  // 1. 끝이 8자리 날짜?
-  if (i >= 0 && is8DigitDate(parts[i])) {
+  if (i >= front && is8DigitDate(parts[i])) {
     result.shootDate = parts[i]
     i--
   }
 
-  // 2. 그 앞이 촬영자?(한글 2~4자)
-  if (i >= 0 && isPhotographer(parts[i]) && !KNOWN_PREFIXES.some(p => parts[i].startsWith(p))) {
+  if (i >= front && isPhotographer(parts[i]) && !KNOWN_PREFIXES.some(p => parts[i].startsWith(p))) {
     result.photographer = parts[i]
     i--
   }
 
-  // 3. 그 앞이 지역/포인트?
-  if (i >= 0 && isPointPart(parts[i])) {
+  if (i >= front && isPointPart(parts[i])) {
     const pointFull = parts[i]
     result.pointNameEndsWithN = pointFull.endsWith('N')
     let pointBase = pointFull.replace(/N$/, '')
@@ -508,16 +522,24 @@ function parseExistingFilename(nameWithoutExt) {
     i--
   }
 
-  // 4. 그 앞이 물고기?
-  if (i >= 0 && isFishPart(parts[i])) {
+  if (i >= front && isFishPart(parts[i])) {
     result.fishName = parts[i]
     i--
   }
 
-  // 5. 남은 앞부분 = originalBase
-  result.originalBase = i >= 0 ? parts.slice(0, i + 1).join('_') : parts[0] || ''
-
   return result
+}
+
+/** 파일명에서 카메라 원본 코드만 추출 (캐시 없이 사용) */
+function extractOriginalBase(fileName) {
+  const nameWithoutExt = fileName.includes('.') ? fileName.substring(0, fileName.lastIndexOf('.')) : fileName
+  const parts = nameWithoutExt.split('_').filter(Boolean)
+  let front = 0
+  while (front < parts.length && isCameraCode(parts[front]) && !is8DigitDate(parts[front])) {
+    front++
+  }
+  if (front === 0) front = 1
+  return parts.slice(0, front).join('_')
 }
 
 function updateFilenamePreview() {

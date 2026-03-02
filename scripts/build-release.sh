@@ -14,6 +14,10 @@ unset CI CI_JOB_ID GITHUB_ACTIONS 2>/dev/null || true
 mkdir -p "$DIST_DIR"
 export DIST_DIR
 
+# build/version.json → package.json, tauri.conf.json, Cargo.toml 동기화
+echo ">>> 버전 동기화 (build/version.json)..."
+node scripts/sync-version.js
+
 # Windows 크로스 컴파일 도구 설치 (macOS 전용)
 setup_windows_cross_compile() {
   echo ">>> Windows 빌드 도구 설치 중..."

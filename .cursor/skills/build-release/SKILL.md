@@ -1,57 +1,62 @@
 ---
 name: build-release
-description: Tauri 앱의 Mac/Windows 배포판을 빌드하고, 버전이 명시되면 GitHub Release까지 생성한다. "배포판 만들어줘", "v1.0.1 배포판 만들어줘", "1.0.2 릴리스해줘" 요청 시 적용.
+description: Tauri 앱의 Mac/Windows 배포판을 빌드한다. 버전 미명시 시 로컬(dist)만, 버전 명시 시 GitHub Release까지. "배포판 만들어줘" → 로컬만. "v1.0.1 배포판 만들어줘" → 빌드+GitHub.
 ---
 
 # 배포판 빌드 스킬
 
+## 중요: 버전에 따른 동작 구분
+
+| 요청 | 동작 | GitHub Release |
+|------|------|----------------|
+| **배포판 만들어줘** (버전 없음) | `build:release` → dist/에만 생성 | ❌ **하지 않음** |
+| **v1.0.1 배포판 만들어줘** (버전 있음) | `release` → 빌드 + 커밋 + 푸시 + 릴리스 | ✅ 실행 |
+
+버전을 명시하지 않으면 **반드시** `build:release`만 실행하고, GitHub에 올리지 않는다.
+
 ## 트리거
 
-다음과 같은 요청 시 이 스킬을 적용한다:
-- 배포판 만들어줘 / 만들어줘
-- 배포판 빌드해줘 / 빌드해줘
-- 배포용 파일 만들어줘
-- **v1.0.1 배포판 만들어줘** / **1.0.2 릴리스해줘** (버전 명시 시 → 빌드 + GitHub Release)
-- 릴리스 빌드 / release 빌드
+- 배포판 만들어줘 / 배포판 빌드해줘 / 배포용 파일 만들어줘 (→ 로컬 빌드만)
+- v1.0.1 배포판 만들어줘 / 1.0.2 릴리스해줘 (→ GitHub Release 포함)
 
 ## 실행 방법
 
-### 버전 없이 (빌드만)
+### 버전 없이 (로컬만, GitHub 미사용)
 
 ```bash
 npm run build:release
 ```
 
-### 버전 명시 (빌드 + GitHub Release)
+→ dist/ 폴더에만 배포 파일 생성. **GitHub Release에는 업로드하지 않는다.**
 
-사용자가 "v1.0.1 배포판 만들어줘", "1.0.2 릴리스해줘"처럼 **버전을 함께 말하면**:
+### 버전 명시 시 (빌드 + GitHub Release)
+
+사용자가 "v1.0.1 배포판 만들어줘"처럼 **버전을 함께 말한 경우에만**:
 
 ```bash
 npm run release -- 1.0.1
 ```
 
-또는:
+또는 사용자가 `build/version.json`을 직접 수정한 뒤:
 
 ```bash
-bash scripts/release-to-github.sh 1.0.1
+npm run release   # 인자 없이 → build/version.json 읽어서 릴리스
 ```
 
-이 경우 다음이 **자동으로** 진행된다:
-1. tauri.conf.json, Cargo.toml, package.json 버전 업데이트
-2. 버전 변경사항 커밋 & 푸시
-3. Mac/Windows 배포판 빌드
-4. GitHub Release 생성 (DMG, exe 업로드)
+1. build/version.json 업데이트 (인자 있으면)
+2. 3개 설정 파일로 버전 동기화
+3. 커밋 & 푸시
+4. 빌드
+5. GitHub Release 생성
 
-> **사전 요구**: `gh auth login`으로 GitHub 로그인 필요. `brew install gh`로 설치.
+> **사전 요구**: `gh auth login` 필요.
 
 ## 버전 추출
 
-사용자 요청에서 버전을 찾는다:
 - "v1.0.1 배포판 만들어줘" → 1.0.1
 - "1.0.2 릴리스해줘" → 1.0.2
-- "배포판 v2.0.0으로 만들어줘" → 2.0.0
 
-`v` 접두사는 제거하고 `x.y.z` 형식만 사용한다. 버전이 없으면 `build:release`만 실행.
+버전이 **없으면** `build:release`만 실행 (로컬 dist/ 한정).
 
 ## 동작
 
@@ -80,6 +85,16 @@ bash scripts/release-to-github.sh 1.0.1
 ```bash
 DIST_DIR=./release npm run build:release
 ```
+
+## 버전 관리
+
+**단일 소스**: `build/version.json`에서만 버전을 관리한다.
+
+```json
+{"version": "1.0.0"}
+```
+
+`package.json`, `tauri.conf.json`, `Cargo.toml`의 version은 빌드/릴리스 시 자동 동기화된다. 수동 sync: `npm run sync-version`
 
 ## 참고
 

@@ -10,7 +10,8 @@
     "build:mac": "cargo tauri build && bash scripts/copy-to-dist.sh",
     "build:windows": "cargo tauri build --config '{\"bundle\":{\"targets\":[\"nsis\"]}}' --runner cargo-xwin --target x86_64-pc-windows-msvc && bash scripts/copy-to-dist.sh x86_64-pc-windows-msvc",
     "build:release": "bash scripts/build-release.sh",
-    "release": "bash scripts/release-to-github.sh"
+    "release": "bash scripts/release-to-github.sh",
+    "sync-version": "node scripts/sync-version.js"
   },
   "devDependencies": {},
   "dependencies": {}

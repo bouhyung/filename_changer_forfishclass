@@ -1,6 +1,5 @@
 const { invoke } = window.__TAURI__.core
 const { convertFileSrc } = window.__TAURI__.core
-const { open } = window.__TAURI__.dialog
 const { WebviewWindow } = window.__TAURI__.webviewWindow
 
 let VIDEO_EXT = []
@@ -78,12 +77,23 @@ document.getElementById('btnHelp').addEventListener('click', async (e) => {
   }
 })
 
-btnSelect.addEventListener('click', async () => {
-  const folder = await open({ directory: true, multiple: false })
-  if (!folder) return
-  currentFolder = folder
-  folderPathEl.textContent = folder
-  await loadImages()
+btnSelect.addEventListener('click', async (e) => {
+  e.preventDefault()
+  try {
+    const openDialog = window.__TAURI__?.dialog?.open
+    if (!openDialog) {
+      alert('폴더 선택 기능을 사용할 수 없습니다. 앱을 다시 빌드해보세요.')
+      return
+    }
+    const folder = await openDialog({ directory: true, multiple: false })
+    if (!folder) return
+    currentFolder = folder
+    folderPathEl.textContent = folder
+    await loadImages()
+  } catch (err) {
+    console.error('[폴더 선택]', err)
+    alert(`폴더 선택 중 오류: ${err.message}`)
+  }
 })
 
 btnReload.addEventListener('click', loadImages)
@@ -290,6 +300,8 @@ function saveCurrentFishInput() {
 }
 
 async function renameCurrentIfReady() {
+  const missing = getMissingBasicInfo()
+  if (missing.length > 0) return
   const newName = buildNewFilename()
   if (!newName || !currentFolder) return
   const oldName = imageFiles[currentIndex]
@@ -313,6 +325,11 @@ async function renameCurrentIfReady() {
 async function goToIndex(idx) {
   if (idx < 0 || idx >= imageFiles.length) return
   saveCurrentFishInput()
+  const missing = getMissingBasicInfo()
+  if (missing.length > 0) {
+    alert(`다음 항목을 입력해주세요:\n\n• ${missing.join('\n• ')}`)
+    return
+  }
   await renameCurrentIfReady()
   currentIndex = idx
   await showCurrentImage()
@@ -578,6 +595,9 @@ function getMissingBasicInfo() {
   const missing = []
   const fishRaw = inputFishName.value.trim()
   if (!chkUncertain.checked && !fishRaw) missing.push('물고기 이름')
+  if (!inputPointName.value.trim()) missing.push('포인트이름')
+  if (!inputPhotographer.value.trim()) missing.push('촬영자이름')
+  if (!inputShootDate.value.trim()) missing.push('촬영일자')
   return missing
 }
 

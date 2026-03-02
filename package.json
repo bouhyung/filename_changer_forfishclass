@@ -5,7 +5,8 @@
   "scripts": {
     "tauri": "cargo tauri",
     "tauri:dev": "cargo tauri dev",
-    "tauri:build": "cargo tauri build"
+    "tauri:build": "cargo tauri build",
+    "build": "cargo tauri build && bash scripts/copy-to-dist.sh"
   },
   "devDependencies": {},
   "dependencies": {}

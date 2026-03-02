@@ -2,7 +2,7 @@ const { invoke } = window.__TAURI__.core
 const { convertFileSrc } = window.__TAURI__.core
 const { WebviewWindow } = window.__TAURI__.webviewWindow
 
-let VIDEO_EXT = []
+const VIDEO_EXT = ['.mp4', '.mov', '.avi', '.mkv', '.webm', '.m4v']
 
 function isVideoFile(fileName) {
   const ext = fileName.includes('.') ? fileName.substring(fileName.lastIndexOf('.')).toLowerCase() : ''
@@ -52,8 +52,6 @@ const lightboxZoomValue = document.getElementById('lightboxZoomValue')
 // ── 초기화 ────────────────────────────────────────────────
 
 ;(async function initOnLoad() {
-  VIDEO_EXT = await invoke('get_video_ext')
-
   const defaults = await invoke('load_defaults')
   if (defaults) {
     inputPointPrefix.value = defaults.pointPrefix != null ? defaults.pointPrefix : '남애'
@@ -365,8 +363,10 @@ async function showCurrentImage() {
     imagePreviewEl.src = ''
     imagePreviewEl.classList.add('hidden')
   } else {
-    const dataUrl = await invoke('get_image_data', { folderPath: currentFolder, fileName })
-    imagePreviewEl.src = dataUrl || ''
+    const imgData = await invoke('get_image_data', { folderPath: currentFolder, fileName })
+    imagePreviewEl.src = imgData
+      ? (imgData.is_path ? convertFileSrc(imgData.value) : imgData.value)
+      : ''
     imagePreviewEl.alt = fileName
     imagePreviewEl.classList.remove('hidden')
     videoPreviewEl.pause()
@@ -545,13 +545,8 @@ function parseExistingFilename(nameWithoutExt) {
 
 function extractOriginalBase(fileName) {
   const nameWithoutExt = fileName.includes('.') ? fileName.substring(0, fileName.lastIndexOf('.')) : fileName
-  const parts = nameWithoutExt.split('_').filter(Boolean)
-  let front = 0
-  while (front < parts.length && isCameraCode(parts[front]) && !is8DigitDate(parts[front])) {
-    front++
-  }
-  if (front === 0) front = 1
-  return parts.slice(0, front).join('_')
+  const parsed = parseExistingFilename(nameWithoutExt)
+  return parsed ? parsed.originalBase : nameWithoutExt.split('_')[0] || nameWithoutExt
 }
 
 function updateFilenamePreview() {
@@ -582,7 +577,7 @@ async function skipCurrent() {
   const result = await invoke('move_to_skip', { folderPath: currentFolder, fileName })
   if (result.success) {
     skipCount++
-    imageFiles = await invoke('read_files', { folderPath: currentFolder })
+    imageFiles.splice(currentIndex, 1)
     currentIndex = Math.min(currentIndex, Math.max(0, imageFiles.length - 1))
     statusLeft.textContent = `스킵: ${fileName} → Skip 폴더`
     await showCurrentImage()

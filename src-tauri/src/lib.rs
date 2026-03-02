@@ -4,8 +4,7 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use tauri::Manager;
 
-const IMAGE_EXT: &[&str] = &[
-    ".jpg", ".jpeg", ".png", ".gif", ".webp", ".bmp",
+const RAW_EXT: &[&str] = &[
     ".heic", ".heif",
     ".orf", ".ori",
     ".cr2", ".cr3",
@@ -16,20 +15,14 @@ const IMAGE_EXT: &[&str] = &[
     ".raf",
     ".pef", ".ptx",
 ];
+
+const BROWSER_IMAGE_EXT: &[&str] = &[".jpg", ".jpeg", ".png", ".gif", ".webp", ".bmp"];
 
 const VIDEO_EXT: &[&str] = &[".mp4", ".mov", ".avi", ".mkv", ".webm", ".m4v"];
 
-const NO_PREVIEW_EXT: &[&str] = &[
-    ".heic", ".heif",
-    ".orf", ".ori",
-    ".cr2", ".cr3",
-    ".arw", ".arw2", ".srf", ".sr2",
-    ".nef", ".nrw", ".nr2",
-    ".dng",
-    ".rw2",
-    ".raf",
-    ".pef", ".ptx",
-];
+fn is_raw_ext(ext: &str) -> bool {
+    RAW_EXT.contains(&ext)
+}
 
 fn get_ext(name: &str) -> String {
     Path::new(name)
@@ -40,7 +33,7 @@ fn get_ext(name: &str) -> String {
 
 fn is_media_file(name: &str) -> bool {
     let ext = get_ext(name);
-    IMAGE_EXT.contains(&ext.as_str()) || VIDEO_EXT.contains(&ext.as_str())
+    BROWSER_IMAGE_EXT.contains(&ext.as_str()) || is_raw_ext(&ext) || VIDEO_EXT.contains(&ext.as_str())
 }
 
 fn make_placeholder_svg(ext: &str) -> String {
@@ -51,11 +44,6 @@ fn make_placeholder_svg(ext: &str) -> String {
     );
     let b64 = STANDARD.encode(svg.as_bytes());
     format!("data:image/svg+xml;base64,{}", b64)
-}
-
-#[tauri::command]
-fn get_video_ext() -> Vec<String> {
-    VIDEO_EXT.iter().map(|s| s.to_string()).collect()
 }
 
 #[tauri::command]
@@ -78,36 +66,33 @@ fn read_files(folder_path: String) -> Result<Vec<String>, String> {
 }
 
 #[tauri::command]
-fn get_image_data(folder_path: String, file_name: String) -> Result<Option<String>, String> {
+fn get_image_data(folder_path: String, file_name: String) -> Result<Option<ImageData>, String> {
     let ext = get_ext(&file_name);
     if VIDEO_EXT.contains(&ext.as_str()) {
         return Ok(None);
     }
 
-    if NO_PREVIEW_EXT.contains(&ext.as_str()) {
-        return Ok(Some(make_placeholder_svg(&ext)));
+    if is_raw_ext(&ext) {
+        return Ok(Some(ImageData { is_path: false, value: make_placeholder_svg(&ext) }));
     }
 
     let file_path = Path::new(&folder_path).join(&file_name);
-    let buf = fs::read(&file_path).map_err(|e| format!("파일 읽기 실패: {}", e))?;
-    let b64 = STANDARD.encode(&buf);
-
-    let mime = match ext.as_str() {
-        ".jpg" | ".jpeg" => "image/jpeg",
-        ".png" => "image/png",
-        ".gif" => "image/gif",
-        ".webp" => "image/webp",
-        ".bmp" => "image/bmp",
-        _ => "application/octet-stream",
-    };
-
-    Ok(Some(format!("data:{};base64,{}", mime, b64)))
+    Ok(Some(ImageData {
+        is_path: true,
+        value: file_path.to_string_lossy().to_string(),
+    }))
 }
 
 #[tauri::command]
 fn get_file_url(folder_path: String, file_name: String) -> String {
     let file_path = Path::new(&folder_path).join(&file_name);
     file_path.to_string_lossy().to_string()
+}
+
+#[derive(Serialize)]
+struct ImageData {
+    is_path: bool,
+    value: String,
 }
 
 #[derive(Serialize, Deserialize)]
@@ -191,7 +176,6 @@ pub fn run() {
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_fs::init())
         .invoke_handler(tauri::generate_handler![
-            get_video_ext,
             read_files,
             get_image_data,
             get_file_url,

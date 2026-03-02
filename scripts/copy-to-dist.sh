@@ -1,8 +1,28 @@
 #!/bin/bash
 # Tauri 빌드 결과물을 dist/ 폴더로 복사
+# 사용법: ./copy-to-dist.sh [target] [--append]
+#   target: 크로스 컴파일 시 (예: x86_64-pc-windows-msvc), 생략 시 release
+#   --append: 기존 dist 내용 유지하고 추가만 (Mac+Windows 동시 배포 시 사용)
 
-BUNDLE_DIR="src-tauri/target/release/bundle"
-DIST_DIR="dist"
+APPEND=false
+TARGET="release"
+for arg in "$@"; do
+  if [ "$arg" = "--append" ]; then
+    APPEND=true
+  elif [ "$arg" != "" ] && [ "$TARGET" = "release" ]; then
+    TARGET="$arg"
+  fi
+done
+
+# CARGO_TARGET_DIR 지원 (Cursor 등에서 사용)
+ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+TARGET_BASE="${CARGO_TARGET_DIR:-$ROOT/src-tauri/target}"
+if [ "$TARGET" = "release" ]; then
+  BUNDLE_DIR="$TARGET_BASE/release/bundle"
+else
+  BUNDLE_DIR="$TARGET_BASE/$TARGET/release/bundle"
+fi
+DIST_DIR="${DIST_DIR:-dist}"
 
 if [ ! -d "$BUNDLE_DIR" ]; then
   echo "오류: 빌드 결과물을 찾을 수 없습니다. ($BUNDLE_DIR)"
@@ -10,7 +30,9 @@ if [ ! -d "$BUNDLE_DIR" ]; then
 fi
 
 mkdir -p "$DIST_DIR"
-rm -rf "$DIST_DIR"/*
+if [ "$APPEND" = false ]; then
+  rm -rf "$DIST_DIR"/*
+fi
 
 # macOS 앱 번들
 if [ -d "$BUNDLE_DIR/macos" ]; then

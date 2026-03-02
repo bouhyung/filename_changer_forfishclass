@@ -1,0 +1,65 @@
+# GitHub Releases: 태그 푸시 또는 release 브랜치 푸시 시 Mac/Windows 빌드 후 릴리스 생성
+# 사용법: git tag v1.0.0 && git push origin v1.0.0
+# 또는: release 브랜치에 푸시
+
+name: release
+
+on:
+  workflow_dispatch: # 수동 실행
+  push:
+    branches:
+      - release
+    tags:
+      - 'v*'
+
+jobs:
+  build-and-release:
+    permissions:
+      contents: write # 릴리스 생성/업로드 권한
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: macos-latest
+            args: '--target aarch64-apple-darwin'
+          - platform: macos-latest
+            args: '--target x86_64-apple-darwin'
+          - platform: windows-latest
+            args: ''
+    runs-on: ${{ matrix.platform }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 'lts/*'
+          cache: 'npm'
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.platform == 'macos-latest' && 'aarch64-apple-darwin,x86_64-apple-darwin' || '' }}
+
+      - name: Rust cache
+        uses: swatinem/rust-cache@v2
+        with:
+          workspaces: 'src-tauri'
+
+      - name: Install frontend dependencies
+        run: npm install
+
+      - uses: tauri-apps/tauri-action@v0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tagName: v__VERSION__
+          releaseName: 'File Arrange for Fish Class v__VERSION__'
+          releaseBody: |
+            ## 다운로드
+            - **Mac (Apple Silicon)**: `*_aarch64.dmg`
+            - **Mac (Intel)**: `*_x64.dmg`
+            - **Windows**: `*_x64-setup.exe`
+          releaseDraft: true
+          prerelease: false
+          args: ${{ matrix.args }}

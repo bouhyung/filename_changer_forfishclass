@@ -1,6 +1,6 @@
 {
   "name": "file-rename",
-  "version": "1.0.3",
+  "version": "1.0.4",
   "description": "파일 이름 일괄 변경 앱",
   "scripts": {
     "tauri": "cargo tauri",

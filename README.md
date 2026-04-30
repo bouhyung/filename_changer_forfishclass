@@ -146,4 +146,8 @@ git push origin v1.0.0
 - **macOS 빌드**: macOS에서만 가능
 - **Windows MSI**: WiX 툴셋이 Windows 전용 → Windows에서만 빌드
 - **Windows NSIS**: macOS에서 크로스 컴파일 가능
-- 코드 서명 없는 앱: macOS에서 "개발자를 확인할 수 없습니다" 경고 시 `시스템 설정 > 개인 정보 보호 및 보안`에서 "열기" 클릭
+- 코드 서명 없는 앱: macOS에서 **"File Arrange for Fish Class is damaged"** 메시지가 뜨면 터미널에서 아래 명령어 실행 후 재시도
+
+```bash
+xattr -cr "/Applications/File Arrange for Fish Class.app"
+```

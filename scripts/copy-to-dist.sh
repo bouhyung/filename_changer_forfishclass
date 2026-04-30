@@ -34,23 +34,33 @@ if [ "$APPEND" = false ]; then
   rm -rf "$DIST_DIR"/*
 fi
 
-# macOS 앱 번들
+# build/version.json 기준 현재 버전 — bundle 디렉토리에 남아있는 옛 버전 결과물은 제외
+VERSION=$(node -e "console.log(JSON.parse(require('fs').readFileSync('$ROOT/build/version.json')).version)" 2>/dev/null)
+
+copy_matching() {
+  local src_dir="$1"
+  local pattern="$2"
+  [ -d "$src_dir" ] || return 0
+  if [ -n "$VERSION" ]; then
+    for f in "$src_dir"/*_${VERSION}_*${pattern} "$src_dir"/*_${VERSION}${pattern}; do
+      [ -e "$f" ] && cp -R "$f" "$DIST_DIR/"
+    done
+  else
+    cp -R "$src_dir"/*${pattern} "$DIST_DIR/" 2>/dev/null
+  fi
+}
+
+# macOS 앱 번들 (.app은 버전 접미사 없음 — 그대로 복사)
 if [ -d "$BUNDLE_DIR/macos" ]; then
   cp -R "$BUNDLE_DIR/macos/"*.app "$DIST_DIR/" 2>/dev/null
 fi
 
 # DMG
-if [ -d "$BUNDLE_DIR/dmg" ]; then
-  cp "$BUNDLE_DIR/dmg/"*.dmg "$DIST_DIR/" 2>/dev/null
-fi
+copy_matching "$BUNDLE_DIR/dmg" ".dmg"
 
-# Windows (나중에 Windows 빌드 시)
-if [ -d "$BUNDLE_DIR/msi" ]; then
-  cp "$BUNDLE_DIR/msi/"*.msi "$DIST_DIR/" 2>/dev/null
-fi
-if [ -d "$BUNDLE_DIR/nsis" ]; then
-  cp "$BUNDLE_DIR/nsis/"*.exe "$DIST_DIR/" 2>/dev/null
-fi
+# Windows
+copy_matching "$BUNDLE_DIR/msi" ".msi"
+copy_matching "$BUNDLE_DIR/nsis" ".exe"
 
 echo "→ dist/ 폴더에 복사 완료"
 ls -la "$DIST_DIR"

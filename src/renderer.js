@@ -139,6 +139,8 @@ for (const el of [inputPointPrefix, inputPointName, inputPhotographer, inputShoo
 }
 chkNight.addEventListener('change', onDefaultInputChange)
 
+emptyStateEl.addEventListener('click', () => btnSelect.click())
+
 imagePreviewEl.addEventListener('click', () => {
   if (imagePreviewEl.src && !imagePreviewEl.classList.contains('hidden')) {
     lightboxVideoEl.classList.add('hidden')

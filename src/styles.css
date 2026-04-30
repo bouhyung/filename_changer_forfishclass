@@ -529,6 +529,16 @@ button:disabled {
   color: var(--text-muted);
   gap: 16px;
   padding: 48px;
+  cursor: pointer;
+}
+
+.empty-state:hover svg {
+  opacity: 0.5;
+  color: var(--text-secondary);
+}
+
+.empty-state:hover span {
+  color: var(--text-secondary);
 }
 
 .empty-state svg {

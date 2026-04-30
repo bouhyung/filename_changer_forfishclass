@@ -3,10 +3,30 @@ const { convertFileSrc } = window.__TAURI__.core
 const { WebviewWindow } = window.__TAURI__.webviewWindow
 
 const VIDEO_EXT = ['.mp4', '.mov', '.avi', '.mkv', '.webm', '.m4v']
+const BROWSER_IMAGE_EXT = ['.jpg', '.jpeg', '.png', '.gif', '.webp', '.bmp']
+const RAW_EXT = ['.heic', '.heif', '.orf', '.ori', '.cr2', '.cr3', '.arw', '.arw2', '.srf', '.sr2', '.nef', '.nrw', '.nr2', '.dng', '.rw2', '.raf', '.pef', '.ptx']
+
+function getExt(fileName) {
+  return fileName.includes('.') ? fileName.substring(fileName.lastIndexOf('.')).toLowerCase() : ''
+}
 
 function isVideoFile(fileName) {
-  const ext = fileName.includes('.') ? fileName.substring(fileName.lastIndexOf('.')).toLowerCase() : ''
-  return VIDEO_EXT.includes(ext)
+  return VIDEO_EXT.includes(getExt(fileName))
+}
+
+function isRawFile(fileName) {
+  return RAW_EXT.includes(getExt(fileName))
+}
+
+function joinPath(folder, name) {
+  const sep = folder.includes('\\') ? '\\' : '/'
+  return folder.endsWith(sep) ? folder + name : folder + sep + name
+}
+
+function makePlaceholderSvg(ext) {
+  const upper = ext.replace('.', '').toUpperCase()
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="400" height="300" viewBox="0 0 400 300"><rect fill="#1c2530" width="400" height="300"/><text x="200" y="140" text-anchor="middle" fill="#8b9cb3" font-size="14" font-family="sans-serif">미리보기 불가</text><text x="200" y="165" text-anchor="middle" fill="#5c6f87" font-size="12" font-family="sans-serif">${upper} (이름 변경 가능)</text></svg>`
+  return 'data:image/svg+xml,' + encodeURIComponent(svg)
 }
 
 let currentFolder = null
@@ -357,16 +377,15 @@ async function showCurrentImage() {
 
   if (isVideo) {
     videoPreviewEl.pause()
-    const filePath = await invoke('get_file_url', { folderPath: currentFolder, fileName })
-    videoPreviewEl.src = convertFileSrc(filePath)
+    videoPreviewEl.src = convertFileSrc(joinPath(currentFolder, fileName))
     videoPreviewEl.classList.remove('hidden')
     imagePreviewEl.src = ''
     imagePreviewEl.classList.add('hidden')
   } else {
-    const imgData = await invoke('get_image_data', { folderPath: currentFolder, fileName })
-    imagePreviewEl.src = imgData
-      ? (imgData.is_path ? convertFileSrc(imgData.value) : imgData.value)
-      : ''
+    const ext = getExt(fileName)
+    imagePreviewEl.src = isRawFile(fileName)
+      ? makePlaceholderSvg(ext)
+      : convertFileSrc(joinPath(currentFolder, fileName))
     imagePreviewEl.alt = fileName
     imagePreviewEl.classList.remove('hidden')
     videoPreviewEl.pause()

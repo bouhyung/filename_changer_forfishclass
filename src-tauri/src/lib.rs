@@ -1,4 +1,3 @@
-use base64::{engine::general_purpose::STANDARD, Engine};
 use serde::{Deserialize, Serialize};
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -36,16 +35,6 @@ fn is_media_file(name: &str) -> bool {
     BROWSER_IMAGE_EXT.contains(&ext.as_str()) || is_raw_ext(&ext) || VIDEO_EXT.contains(&ext.as_str())
 }
 
-fn make_placeholder_svg(ext: &str) -> String {
-    let upper = ext.to_uppercase();
-    let svg = format!(
-        r##"<svg xmlns="http://www.w3.org/2000/svg" width="400" height="300" viewBox="0 0 400 300"><rect fill="#1c2530" width="400" height="300"/><text x="200" y="140" text-anchor="middle" fill="#8b9cb3" font-size="14" font-family="sans-serif">미리보기 불가</text><text x="200" y="165" text-anchor="middle" fill="#5c6f87" font-size="12" font-family="sans-serif">{} (이름 변경 가능)</text></svg>"##,
-        upper
-    );
-    let b64 = STANDARD.encode(svg.as_bytes());
-    format!("data:image/svg+xml;base64,{}", b64)
-}
-
 #[tauri::command]
 fn read_files(folder_path: String) -> Result<Vec<String>, String> {
     let entries =
@@ -63,36 +52,6 @@ fn read_files(folder_path: String) -> Result<Vec<String>, String> {
         .collect();
     files.sort();
     Ok(files)
-}
-
-#[tauri::command]
-fn get_image_data(folder_path: String, file_name: String) -> Result<Option<ImageData>, String> {
-    let ext = get_ext(&file_name);
-    if VIDEO_EXT.contains(&ext.as_str()) {
-        return Ok(None);
-    }
-
-    if is_raw_ext(&ext) {
-        return Ok(Some(ImageData { is_path: false, value: make_placeholder_svg(&ext) }));
-    }
-
-    let file_path = Path::new(&folder_path).join(&file_name);
-    Ok(Some(ImageData {
-        is_path: true,
-        value: file_path.to_string_lossy().to_string(),
-    }))
-}
-
-#[tauri::command]
-fn get_file_url(folder_path: String, file_name: String) -> String {
-    let file_path = Path::new(&folder_path).join(&file_name);
-    file_path.to_string_lossy().to_string()
-}
-
-#[derive(Serialize)]
-struct ImageData {
-    is_path: bool,
-    value: String,
 }
 
 #[derive(Serialize, Deserialize)]
@@ -177,8 +136,6 @@ pub fn run() {
         .plugin(tauri_plugin_fs::init())
         .invoke_handler(tauri::generate_handler![
             read_files,
-            get_image_data,
-            get_file_url,
             rename_file,
             move_to_skip,
             load_defaults,

@@ -351,11 +351,6 @@ async function renameCurrentIfReady() {
 async function goToIndex(idx) {
   if (idx < 0 || idx >= imageFiles.length) return
   saveCurrentFishInput()
-  const missing = getMissingBasicInfo()
-  if (missing.length > 0) {
-    alert(`다음 항목을 입력해주세요:\n\n• ${missing.join('\n• ')}`)
-    return
-  }
   const renamed = await renameCurrentIfReady()
   if (!renamed) return
   currentIndex = idx

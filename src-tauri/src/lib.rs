@@ -68,6 +68,9 @@ fn rename_file(folder_path: String, old_name: String, new_name: String) -> OpRes
     }
     let old_path = Path::new(&folder_path).join(&old_name);
     let new_path = Path::new(&folder_path).join(&new_name);
+    if new_path.exists() {
+        return OpResult { success: false, error: Some("동일한 이름의 파일이 이미 존재합니다.".into()) };
+    }
     match fs::rename(&old_path, &new_path) {
         Ok(()) => OpResult { success: true, error: None },
         Err(e) => OpResult { success: false, error: Some(e.to_string()) },
@@ -116,6 +119,10 @@ fn save_defaults(app: tauri::AppHandle, defaults: serde_json::Value) -> Result<(
 
 #[tauri::command]
 async fn open_help(app: tauri::AppHandle) -> Result<(), String> {
+    if let Some(existing) = app.get_webview_window("help") {
+        let _ = existing.set_focus();
+        return Ok(());
+    }
     let _help = tauri::WebviewWindowBuilder::new(
         &app,
         "help",

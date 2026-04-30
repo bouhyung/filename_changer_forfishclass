@@ -1,6 +1,5 @@
 const { invoke } = window.__TAURI__.core
 const { convertFileSrc } = window.__TAURI__.core
-const { WebviewWindow } = window.__TAURI__.webviewWindow
 
 const VIDEO_EXT = ['.mp4', '.mov', '.avi', '.mkv', '.webm', '.m4v']
 const BROWSER_IMAGE_EXT = ['.jpg', '.jpeg', '.png', '.gif', '.webp', '.bmp']
@@ -319,11 +318,11 @@ function saveCurrentFishInput() {
 
 async function renameCurrentIfReady() {
   const missing = getMissingBasicInfo()
-  if (missing.length > 0) return
+  if (missing.length > 0) return true
   const newName = buildNewFilename()
-  if (!newName || !currentFolder) return
+  if (!newName || !currentFolder) return true
   const oldName = imageFiles[currentIndex]
-  if (oldName === newName) return
+  if (oldName === newName) return true
   try {
     const result = await invoke('rename_file', { folderPath: currentFolder, oldName, newName })
     if (result.success) {
@@ -334,9 +333,16 @@ async function renameCurrentIfReady() {
       if (fishInputCache[oldName]) delete fishInputCache[oldName]
       imageFiles[currentIndex] = newName
       statusLeft.textContent = `변경 완료: ${newName}`
+      return true
+    } else {
+      statusLeft.textContent = `오류: ${result.error}`
+      alert(`파일 이름 변경 실패:\n${result.error}`)
+      return false
     }
   } catch (err) {
     console.error('[renameCurrentIfReady]', err)
+    statusLeft.textContent = `오류: ${err.message}`
+    return false
   }
 }
 
@@ -348,7 +354,8 @@ async function goToIndex(idx) {
     alert(`다음 항목을 입력해주세요:\n\n• ${missing.join('\n• ')}`)
     return
   }
-  await renameCurrentIfReady()
+  const renamed = await renameCurrentIfReady()
+  if (!renamed) return
   currentIndex = idx
   await showCurrentImage()
 }
@@ -410,10 +417,10 @@ async function showCurrentImage() {
     chkUncertain.checked = cached.chkUncertain
   } else if (parsed && parsed.fishName) {
     let displayName = parsed.fishName
-    chkJuvenile.checked = displayName.endsWith('J')
     chkUncertain.checked = /^\(.+\)$/.test(displayName)
-    if (chkJuvenile.checked) displayName = displayName.slice(0, -1)
     if (chkUncertain.checked) displayName = displayName.replace(/^\(|\)$/g, '')
+    chkJuvenile.checked = displayName.endsWith('J')
+    if (chkJuvenile.checked) displayName = displayName.slice(0, -1)
     inputFishName.value = displayName === '물고기' ? '' : displayName
   } else {
     inputFishName.value = ''
@@ -596,6 +603,8 @@ async function skipCurrent() {
   const result = await invoke('move_to_skip', { folderPath: currentFolder, fileName })
   if (result.success) {
     skipCount++
+    delete fishInputCache[fileName]
+    delete parsedCache[fileName]
     imageFiles.splice(currentIndex, 1)
     currentIndex = Math.min(currentIndex, Math.max(0, imageFiles.length - 1))
     statusLeft.textContent = `스킵: ${fileName} → Skip 폴더`

@@ -117,6 +117,32 @@ fn save_defaults(app: tauri::AppHandle, defaults: serde_json::Value) -> Result<(
     Ok(())
 }
 
+fn history_path(app: &tauri::AppHandle) -> PathBuf {
+    let dir = app
+        .path()
+        .app_config_dir()
+        .unwrap_or_else(|_| PathBuf::from("."));
+    dir.join("history.json")
+}
+
+#[tauri::command]
+fn load_history(app: tauri::AppHandle) -> Option<serde_json::Value> {
+    let path = history_path(&app);
+    let data = fs::read_to_string(&path).ok()?;
+    serde_json::from_str(&data).ok()
+}
+
+#[tauri::command]
+fn save_history(app: tauri::AppHandle, history: serde_json::Value) -> Result<(), String> {
+    let path = history_path(&app);
+    if let Some(parent) = path.parent() {
+        fs::create_dir_all(parent).map_err(|e| e.to_string())?;
+    }
+    let json = serde_json::to_string_pretty(&history).map_err(|e| e.to_string())?;
+    fs::write(&path, json).map_err(|e| e.to_string())?;
+    Ok(())
+}
+
 #[tauri::command]
 async fn open_help(app: tauri::AppHandle) -> Result<(), String> {
     if let Some(existing) = app.get_webview_window("help") {
@@ -147,6 +173,8 @@ pub fn run() {
             move_to_skip,
             load_defaults,
             save_defaults,
+            load_history,
+            save_history,
             open_help,
         ])
         .run(tauri::generate_context!())

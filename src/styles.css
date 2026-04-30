@@ -500,11 +500,9 @@ button:disabled {
 }
 
 .viewer-index {
-  position: absolute;
-  bottom: 12px;
-  right: 20px;
   font-size: 12px;
   color: var(--text-muted);
+  margin-left: 4px;
 }
 
 /* ── Status Bar ───────────────────────────────────────── */

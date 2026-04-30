@@ -48,6 +48,8 @@ const filenamePreviewEl = document.getElementById('filenamePreview')
 const viewerIndexEl    = document.getElementById('viewerIndex')
 const inputPointPrefix = document.getElementById('inputPointPrefix')
 const inputPointName   = document.getElementById('inputPointName')
+const pointPrefixHistoryEl = document.getElementById('pointPrefixHistory')
+const pointNameHistoryEl   = document.getElementById('pointNameHistory')
 const inputPhotographer = document.getElementById('inputPhotographer')
 const inputShootDate   = document.getElementById('inputShootDate')
 const chkNight         = document.getElementById('chkNight')
@@ -81,6 +83,7 @@ const lightboxZoomValue = document.getElementById('lightboxZoomValue')
   } else {
     inputPointPrefix.value = '남애'
   }
+  await loadHistory()
 })()
 
 // ── 이벤트 ────────────────────────────────────────────────
@@ -137,6 +140,7 @@ function onDefaultInputChange() {
 for (const el of [inputPointPrefix, inputPointName, inputPhotographer, inputShootDate]) {
   el.addEventListener('input', onDefaultInputChange)
 }
+inputPointPrefix.addEventListener('input', refreshPointNameDatalist)
 chkNight.addEventListener('change', onDefaultInputChange)
 
 emptyStateEl.addEventListener('click', () => btnSelect.click())
@@ -657,6 +661,7 @@ async function applyAndNext() {
       }
       imageFiles[currentIndex] = newName
       renameCount++
+      pushHistoryFromCurrent()
       statusLeft.textContent = `변경 완료: ${newName}`
       if (currentIndex < imageFiles.length - 1) {
         currentIndex++
@@ -707,4 +712,91 @@ let saveDefaultsTimer = null
 function debouncedSaveDefaults() {
   clearTimeout(saveDefaultsTimer)
   saveDefaultsTimer = setTimeout(saveDefaults, 300)
+}
+
+// ── 입력 이력 (지역/포인트) ───────────────────────────────
+const HISTORY_PREFIX_MAX = 30
+const HISTORY_POINT_MAX = 100
+let history = { prefixes: [], points: [] }
+
+async function loadHistory() {
+  const h = await invoke('load_history')
+  if (h && typeof h === 'object') {
+    history.prefixes = Array.isArray(h.prefixes) ? h.prefixes.filter(s => typeof s === 'string') : []
+    history.points = Array.isArray(h.points)
+      ? h.points.filter(e => e && typeof e.name === 'string')
+      : []
+  }
+  refreshPrefixDatalist()
+  refreshPointNameDatalist()
+}
+
+function refreshPrefixDatalist() {
+  pointPrefixHistoryEl.innerHTML = ''
+  const merged = []
+  const seen = new Set()
+  for (const p of [...history.prefixes, ...KNOWN_PREFIXES]) {
+    if (p && !seen.has(p)) {
+      seen.add(p)
+      merged.push(p)
+    }
+  }
+  for (const p of merged) {
+    const opt = document.createElement('option')
+    opt.value = p
+    pointPrefixHistoryEl.appendChild(opt)
+  }
+}
+
+function refreshPointNameDatalist() {
+  pointNameHistoryEl.innerHTML = ''
+  const currentPrefix = inputPointPrefix.value.trim()
+  const sorted = [...history.points].sort((a, b) => (b.lastUsed || 0) - (a.lastUsed || 0))
+  const matched = []
+  const others = []
+  const seen = new Set()
+  for (const e of sorted) {
+    if (!e.name || seen.has(e.name)) continue
+    seen.add(e.name)
+    if (currentPrefix && e.prefix === currentPrefix) {
+      matched.push(e)
+    } else {
+      others.push(e)
+    }
+  }
+  const ordered = currentPrefix ? [...matched, ...others] : others.concat(matched)
+  for (const e of ordered) {
+    const opt = document.createElement('option')
+    opt.value = e.name
+    if (e.prefix) opt.label = e.prefix
+    pointNameHistoryEl.appendChild(opt)
+  }
+}
+
+let saveHistoryTimer = null
+function pushHistoryFromCurrent() {
+  const prefix = inputPointPrefix.value.trim()
+  const name = inputPointName.value.trim()
+  const ts = Date.now()
+  let changed = false
+
+  if (prefix && !KNOWN_PREFIXES.includes(prefix)) {
+    history.prefixes = [prefix, ...history.prefixes.filter(p => p !== prefix)].slice(0, HISTORY_PREFIX_MAX)
+    changed = true
+  }
+  if (name) {
+    history.points = [
+      { prefix, name, lastUsed: ts },
+      ...history.points.filter(e => !(e.name === name && (e.prefix || '') === prefix))
+    ].slice(0, HISTORY_POINT_MAX)
+    changed = true
+  }
+  if (!changed) return
+
+  refreshPrefixDatalist()
+  refreshPointNameDatalist()
+  clearTimeout(saveHistoryTimer)
+  saveHistoryTimer = setTimeout(() => {
+    invoke('save_history', { history }).catch(() => {})
+  }, 200)
 }

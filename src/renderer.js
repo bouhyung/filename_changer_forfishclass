@@ -429,12 +429,12 @@ async function showCurrentImage() {
     chkUncertain.checked = false
   }
 
-  if (parsed && (parsed.pointName || parsed.photographer || parsed.shootDate)) {
-    if (parsed.pointPrefix != null) inputPointPrefix.value = parsed.pointPrefix
-    inputPointName.value = parsed.pointName || ''
+  if (parsed && parsed.pointPrefix && parsed.pointName) {
+    inputPointPrefix.value = parsed.pointPrefix
+    inputPointName.value = parsed.pointName
     chkNight.checked = parsed.pointNameEndsWithN
-    inputPhotographer.value = parsed.photographer || ''
-    inputShootDate.value = parsed.shootDate || ''
+    if (parsed.photographer) inputPhotographer.value = parsed.photographer
+    if (parsed.shootDate) inputShootDate.value = parsed.shootDate
   }
 
   updateFilenamePreview()

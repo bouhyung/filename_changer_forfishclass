@@ -10,6 +10,17 @@ cd "$ROOT"
 
 # ── 사전 점검 ────────────────────────────────────────────────
 
+# 버전 파일 외 uncommitted 변경사항 확인
+if ! git diff --quiet -- ':!build/version.json' ':!package.json' \
+     ':!src-tauri/tauri.conf.json' ':!src-tauri/Cargo.toml' || \
+   ! git diff --cached --quiet -- ':!build/version.json' ':!package.json' \
+     ':!src-tauri/tauri.conf.json' ':!src-tauri/Cargo.toml'; then
+  echo "오류: 커밋되지 않은 변경사항이 있습니다. 먼저 커밋 후 릴리즈하세요."
+  echo ""
+  git status --short
+  exit 1
+fi
+
 if ! command -v gh &>/dev/null; then
   echo "오류: GitHub CLI(gh)가 설치되어 있지 않습니다. (brew install gh)"
   exit 1

@@ -11,6 +11,7 @@ cd "$ROOT"
 # Cursor CI 환경 변수 제거 (cargo tauri --ci 오류 방지)
 unset CI CI_JOB_ID GITHUB_ACTIONS 2>/dev/null || true
 
+rm -rf "$DIST_DIR"
 mkdir -p "$DIST_DIR"
 export DIST_DIR
 
@@ -54,9 +55,9 @@ echo "=== 배포판 빌드 시작 ==="
 
 # 1. 현재 플랫폼용 빌드
 if [[ "$OSTYPE" == "darwin"* ]]; then
-  echo ">>> Mac 빌드..."
-  cargo tauri build
-  bash scripts/copy-to-dist.sh
+  echo ">>> Mac 빌드 (Apple Silicon)..."
+  cargo tauri build --target aarch64-apple-darwin
+  bash scripts/copy-to-dist.sh aarch64-apple-darwin
 
   # 2. Windows 크로스 컴파일 (도구 없으면 자동 설치 후 빌드)
   echo ""

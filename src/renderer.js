@@ -279,13 +279,14 @@ document.addEventListener('keydown', (e) => {
   }
   if (lightboxEl.classList.contains('active')) return
   if (!imageFiles.length) return
+  const inInput = e.target.matches('input, textarea')
   if (e.key === 'Enter' && !e.target.matches('textarea')) {
     e.preventDefault()
     applyAndNext()
-  } else if (e.key === 'ArrowLeft') {
+  } else if (!inInput && e.key === 'ArrowLeft') {
     e.preventDefault()
     if (!btnPrev.disabled) goToIndex(currentIndex - 1)
-  } else if (e.key === 'ArrowRight') {
+  } else if (!inInput && e.key === 'ArrowRight') {
     e.preventDefault()
     if (!btnNext.disabled) goToIndex(currentIndex + 1)
   }

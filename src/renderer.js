@@ -333,11 +333,8 @@ async function renameCurrentIfReady() {
   try {
     const result = await invoke('rename_file', { folderPath: currentFolder, oldName, newName })
     if (result.success) {
-      if (parsedCache[oldName]) {
-        parsedCache[newName] = parsedCache[oldName]
-        delete parsedCache[oldName]
-      }
-      if (fishInputCache[oldName]) delete fishInputCache[oldName]
+      delete parsedCache[oldName]
+      delete fishInputCache[oldName]
       imageFiles[currentIndex] = newName
       statusLeft.textContent = `변경 완료: ${newName}`
       return true
@@ -653,13 +650,8 @@ async function applyAndNext() {
     const result = await invoke('rename_file', { folderPath: currentFolder, oldName, newName })
 
     if (result.success) {
-      if (parsedCache[oldName]) {
-        parsedCache[newName] = parsedCache[oldName]
-        delete parsedCache[oldName]
-      }
-      if (fishInputCache[oldName]) {
-        delete fishInputCache[oldName]
-      }
+      delete parsedCache[oldName]
+      delete fishInputCache[oldName]
       imageFiles[currentIndex] = newName
       renameCount++
       pushHistoryFromCurrent()

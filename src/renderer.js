@@ -35,6 +35,9 @@ let fishInputCache = {}
 let parsedCache = {}
 let renameCount = 0
 let skipCount = 0
+let ollamaEndpoint = ''
+let ollamaModel = ''
+let isSuggesting = false
 
 const folderPathEl      = document.getElementById('folderPath')
 const headerStatsEl     = document.getElementById('headerStats')
@@ -58,6 +61,9 @@ const btnReload       = document.getElementById('btnReload')
 const btnPrev         = document.getElementById('btnPrev')
 const btnNext         = document.getElementById('btnNext')
 const btnSkip         = document.getElementById('btnSkip')
+const btnSuggest      = document.getElementById('btnSuggest')
+const suggestionRowEl = document.getElementById('suggestionRow')
+const lblFishName     = document.getElementById('lblFishName')
 const btnToday        = document.getElementById('btnToday')
 const statusLeft      = document.getElementById('statusLeft')
 const statusRight     = document.getElementById('statusRight')
@@ -75,15 +81,20 @@ const lightboxZoomValue = document.getElementById('lightboxZoomValue')
 ;(async function initOnLoad() {
   const defaults = await invoke('load_defaults')
   if (defaults) {
-    inputPointPrefix.value = defaults.pointPrefix != null ? defaults.pointPrefix : '남애'
+    if (defaults.pointPrefix != null) inputPointPrefix.value = defaults.pointPrefix
     if (defaults.pointName != null) inputPointName.value = defaults.pointName
     if (defaults.photographerName != null) inputPhotographer.value = defaults.photographerName
     if (defaults.shootDate != null) inputShootDate.value = defaults.shootDate
     if (defaults.nightMode != null) chkNight.checked = defaults.nightMode
-  } else {
-    inputPointPrefix.value = '남애'
+    if (defaults.ollamaEndpoint != null) ollamaEndpoint = defaults.ollamaEndpoint
+    if (defaults.ollamaModel != null) ollamaModel = defaults.ollamaModel
   }
   await loadHistory()
+  const formPrefix = inputPointPrefix.value.trim()
+  if (formPrefix && !history.prefixes.includes(formPrefix)) {
+    history.prefixes = [formPrefix, ...history.prefixes].slice(0, HISTORY_PREFIX_MAX)
+    refreshPrefixDatalist()
+  }
 })()
 
 // ── 이벤트 ────────────────────────────────────────────────
@@ -122,6 +133,25 @@ btnPrev.addEventListener('click', () => goToIndex(currentIndex - 1))
 btnNext.addEventListener('click', () => goToIndex(currentIndex + 1))
 
 btnSkip.addEventListener('click', skipCurrent)
+
+btnSuggest.addEventListener('click', suggestCurrent)
+
+const SUGGEST_VISIBLE_KEY = 'suggestVisible'
+function applySuggestVisibility() {
+  const visible = localStorage.getItem(SUGGEST_VISIBLE_KEY) === '1'
+  btnSuggest.classList.toggle('hidden', !visible)
+  if (!visible) {
+    suggestionRowEl.innerHTML = ''
+    suggestionRowEl.classList.add('hidden')
+  }
+}
+lblFishName.addEventListener('click', (e) => {
+  if (!e.shiftKey) return
+  const next = localStorage.getItem(SUGGEST_VISIBLE_KEY) !== '1'
+  localStorage.setItem(SUGGEST_VISIBLE_KEY, next ? '1' : '0')
+  applySuggestVisibility()
+})
+applySuggestVisibility()
 
 btnToday.addEventListener('click', () => {
   const now = new Date()
@@ -282,7 +312,11 @@ document.addEventListener('keydown', (e) => {
   const inInput = e.target.matches('input, textarea')
   if (e.key === 'Enter' && !e.target.matches('textarea')) {
     e.preventDefault()
-    applyAndNext()
+    if (!inInput) {
+      inputFishName.focus()
+    } else {
+      applyAndNext()
+    }
   } else if (!inInput && e.key === 'ArrowLeft') {
     e.preventDefault()
     if (!btnPrev.disabled) goToIndex(currentIndex - 1)
@@ -310,7 +344,7 @@ async function loadImages() {
   btnSkip.disabled = !imageFiles.length
   headerStatsEl.textContent = imageFiles.length ? `${imageFiles.length}개 미디어` : '미디어 없음'
   statusLeft.textContent = imageFiles.length ? `총 ${imageFiles.length}개` : '준비'
-  await showCurrentImage()
+  await showCurrentImage({ focusInput: true })
 }
 
 function saveCurrentFishInput() {
@@ -350,16 +384,17 @@ async function renameCurrentIfReady() {
   }
 }
 
-async function goToIndex(idx) {
+async function goToIndex(idx, { focusInput = false } = {}) {
   if (idx < 0 || idx >= imageFiles.length) return
   saveCurrentFishInput()
   const renamed = await renameCurrentIfReady()
   if (!renamed) return
   currentIndex = idx
-  await showCurrentImage()
+  await showCurrentImage({ focusInput })
 }
 
-async function showCurrentImage() {
+async function showCurrentImage({ focusInput = false } = {}) {
+  clearSuggestions()
   if (!imageFiles.length) {
     emptyStateEl.classList.remove('hidden')
     imagePreviewEl.classList.add('hidden')
@@ -372,6 +407,7 @@ async function showCurrentImage() {
     btnPrev.disabled = true
     btnNext.disabled = true
     btnSkip.disabled = true
+    btnSuggest.disabled = true
     return
   }
 
@@ -380,6 +416,7 @@ async function showCurrentImage() {
 
   const fileName = imageFiles[currentIndex]
   const isVideo = isVideoFile(fileName)
+  btnSuggest.disabled = isVideo || isRawFile(fileName)
 
   if (isVideo) {
     videoPreviewEl.pause()
@@ -437,7 +474,11 @@ async function showCurrentImage() {
 
   updateFilenamePreview()
   updateNavState()
-  inputFishName.focus()
+  if (focusInput) {
+    inputFishName.focus()
+  } else if (document.activeElement === inputFishName) {
+    inputFishName.blur()
+  }
 }
 
 function getEffectivePointName() {
@@ -480,7 +521,19 @@ function buildNewFilename() {
   return parts.join('_') + ext
 }
 
-const KNOWN_PREFIXES = ['남애', '북애', '동애', '서애', '속초', '고성']
+const SEED_PREFIXES = ['남애', '북애', '동애', '서애', '속초', '고성']
+
+function getRecognizedPrefixes() {
+  const seen = new Set()
+  const result = []
+  for (const p of [...history.prefixes, ...SEED_PREFIXES]) {
+    if (p && !seen.has(p)) {
+      seen.add(p)
+      result.push(p)
+    }
+  }
+  return result
+}
 
 function is8DigitDate(s) {
   return /^\d{8}$/.test(s)
@@ -492,7 +545,7 @@ function isPhotographer(s) {
 
 function isPointPart(s) {
   if (!s || /^\d+$/.test(s)) return false
-  for (const p of KNOWN_PREFIXES) {
+  for (const p of getRecognizedPrefixes()) {
     if (s.startsWith(p)) return true
   }
   return false
@@ -538,7 +591,7 @@ function parseExistingFilename(nameWithoutExt) {
     i--
   }
 
-  if (i >= front && isPhotographer(parts[i]) && !KNOWN_PREFIXES.some(p => parts[i].startsWith(p))) {
+  if (i >= front && isPhotographer(parts[i]) && !getRecognizedPrefixes().some(p => parts[i].startsWith(p))) {
     result.photographer = parts[i]
     i--
   }
@@ -548,7 +601,7 @@ function parseExistingFilename(nameWithoutExt) {
     result.pointNameEndsWithN = pointFull.endsWith('N')
     let pointBase = pointFull.replace(/N$/, '')
     let detectedPrefix = ''
-    for (const p of KNOWN_PREFIXES) {
+    for (const p of getRecognizedPrefixes()) {
       if (pointBase.startsWith(p)) {
         detectedPrefix = p
         pointBase = pointBase.slice(p.length)
@@ -596,6 +649,82 @@ function updateNavState() {
   btnNext.disabled = currentIndex >= imageFiles.length - 1
 }
 
+function clearSuggestions() {
+  suggestionRowEl.innerHTML = ''
+  suggestionRowEl.classList.add('hidden')
+}
+
+function renderSuggestionMessage(text, klass) {
+  suggestionRowEl.innerHTML = ''
+  const span = document.createElement('span')
+  span.className = klass
+  span.textContent = text
+  suggestionRowEl.appendChild(span)
+  suggestionRowEl.classList.remove('hidden')
+}
+
+function renderSuggestionChips(candidates) {
+  suggestionRowEl.innerHTML = ''
+  const label = document.createElement('span')
+  label.className = 'suggestion-label'
+  label.textContent = '추천:'
+  suggestionRowEl.appendChild(label)
+  for (const c of candidates) {
+    const chip = document.createElement('span')
+    chip.className = 'suggestion-chip'
+    chip.title = '클릭하면 입력칸에 채워집니다'
+    const name = document.createElement('span')
+    name.textContent = c.name
+    chip.appendChild(name)
+    if (typeof c.confidence === 'number' && c.confidence > 0) {
+      const conf = document.createElement('span')
+      conf.className = 'suggestion-chip-confidence'
+      conf.textContent = `${Math.round(c.confidence * 100)}%`
+      chip.appendChild(conf)
+    }
+    chip.addEventListener('click', () => {
+      inputFishName.value = c.name
+      chkUncertain.checked = false
+      updateFilenamePreview()
+      inputFishName.focus()
+    })
+    suggestionRowEl.appendChild(chip)
+  }
+  suggestionRowEl.classList.remove('hidden')
+}
+
+async function suggestCurrent() {
+  if (isSuggesting) return
+  if (!imageFiles.length || !currentFolder) return
+  const fileName = imageFiles[currentIndex]
+  if (isRawFile(fileName) || isVideoFile(fileName)) {
+    renderSuggestionMessage('이 형식은 동정 미지원입니다.', 'suggestion-error')
+    return
+  }
+  const imagePath = joinPath(currentFolder, fileName)
+  isSuggesting = true
+  btnSuggest.disabled = true
+  renderSuggestionMessage('추천 중... (Ollama 응답 대기)', 'suggestion-loading')
+  try {
+    const candidates = await invoke('suggest_species', {
+      imagePath,
+      ollamaEndpoint: ollamaEndpoint || null,
+      ollamaModel: ollamaModel || null,
+    })
+    if (Array.isArray(candidates) && candidates.length > 0) {
+      renderSuggestionChips(candidates)
+    } else {
+      renderSuggestionMessage('후보를 받지 못했습니다.', 'suggestion-error')
+    }
+  } catch (err) {
+    const msg = typeof err === 'string' ? err : (err && err.message) || String(err)
+    renderSuggestionMessage(msg, 'suggestion-error')
+  } finally {
+    isSuggesting = false
+    btnSuggest.disabled = isRawFile(fileName) || isVideoFile(fileName)
+  }
+}
+
 async function skipCurrent() {
   if (!imageFiles.length || !currentFolder) return
   const fileName = imageFiles[currentIndex]
@@ -607,7 +736,7 @@ async function skipCurrent() {
     imageFiles.splice(currentIndex, 1)
     currentIndex = Math.min(currentIndex, Math.max(0, imageFiles.length - 1))
     statusLeft.textContent = `스킵: ${fileName} → Skip 폴더`
-    await showCurrentImage()
+    await showCurrentImage({ focusInput: true })
   } else {
     statusLeft.textContent = `오류: ${result.error}`
   }
@@ -640,7 +769,7 @@ async function applyAndNext() {
     statusLeft.textContent = '변경사항 없음 (동일한 파일명)'
     if (currentIndex < imageFiles.length - 1) {
       currentIndex++
-      await showCurrentImage()
+      await showCurrentImage({ focusInput: true })
     }
     return
   }
@@ -658,7 +787,7 @@ async function applyAndNext() {
       statusLeft.textContent = `변경 완료: ${newName}`
       if (currentIndex < imageFiles.length - 1) {
         currentIndex++
-        await showCurrentImage()
+        await showCurrentImage({ focusInput: true })
       } else {
         updateFilenamePreview()
         updateNavState()
@@ -726,18 +855,14 @@ async function loadHistory() {
 
 function refreshPrefixDatalist() {
   pointPrefixHistoryEl.innerHTML = ''
-  const merged = []
   const seen = new Set()
-  for (const p of [...history.prefixes, ...KNOWN_PREFIXES]) {
+  for (const p of history.prefixes) {
     if (p && !seen.has(p)) {
       seen.add(p)
-      merged.push(p)
+      const opt = document.createElement('option')
+      opt.value = p
+      pointPrefixHistoryEl.appendChild(opt)
     }
-  }
-  for (const p of merged) {
-    const opt = document.createElement('option')
-    opt.value = p
-    pointPrefixHistoryEl.appendChild(opt)
   }
 }
 
@@ -773,7 +898,7 @@ function pushHistoryFromCurrent() {
   const ts = Date.now()
   let changed = false
 
-  if (prefix && !KNOWN_PREFIXES.includes(prefix)) {
+  if (prefix) {
     history.prefixes = [prefix, ...history.prefixes.filter(p => p !== prefix)].slice(0, HISTORY_PREFIX_MAX)
     changed = true
   }

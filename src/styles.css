@@ -487,6 +487,56 @@ button:disabled {
   color: var(--text-muted);
 }
 
+.suggestion-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  align-items: center;
+  margin-top: 4px;
+  font-size: 12px;
+}
+
+.suggestion-row.hidden {
+  display: none;
+}
+
+.suggestion-label {
+  color: var(--text-muted);
+  margin-right: 4px;
+}
+
+.suggestion-chip {
+  display: inline-flex;
+  gap: 6px;
+  align-items: center;
+  padding: 4px 10px;
+  border-radius: 14px;
+  background: rgba(120, 180, 255, 0.12);
+  border: 1px solid rgba(120, 180, 255, 0.35);
+  color: var(--text-primary, #e6edf3);
+  cursor: pointer;
+  user-select: none;
+}
+
+.suggestion-chip:hover {
+  background: rgba(120, 180, 255, 0.22);
+  border-color: rgba(120, 180, 255, 0.6);
+}
+
+.suggestion-chip-confidence {
+  color: var(--text-muted);
+  font-size: 11px;
+}
+
+.suggestion-loading {
+  color: var(--text-muted);
+  font-style: italic;
+}
+
+.suggestion-error {
+  color: var(--accent-red, #f87171);
+}
+
 .nav-buttons {
   display: flex;
   gap: 10px;

@@ -68,8 +68,9 @@
 
       <div class="viewer-controls">
         <div class="fish-name-row">
-          <label>물고기 이름</label>
+          <label id="lblFishName" title="Shift+클릭으로 동정 추천 토글">물고기 이름</label>
           <input type="text" id="inputFishName" placeholder="예: 황점개볼락" />
+          <button type="button" class="btn-secondary hidden" id="btnSuggest" disabled title="Ollama Gemma로 어종 추천">동정 추천</button>
           <label class="checkbox-label">
             <input type="checkbox" id="chkJuvenile" /> 유어(J)
           </label>
@@ -77,6 +78,7 @@
             <input type="checkbox" id="chkUncertain" /> 이름 불명확/모름
           </label>
         </div>
+        <div class="suggestion-row hidden" id="suggestionRow"></div>
         <div class="filename-preview filename-preview-muted" id="filenamePreview"></div>
         <div class="nav-buttons">
           <div class="nav-buttons-left">

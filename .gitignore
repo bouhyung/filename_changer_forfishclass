@@ -3,3 +3,4 @@ src-tauri/target/
 dist/
 *.log
 .DS_Store
+src-tauri/resources/reference_images/

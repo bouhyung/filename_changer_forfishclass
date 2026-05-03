@@ -64,6 +64,7 @@ Requires `gh` CLI authenticated (`gh auth login`).
 | `move_to_skip` | Move file to `Skip/` subfolder |
 | `load_defaults` / `save_defaults` | Persist form defaults to `app_config_dir/defaults.json` |
 | `open_help` | Open `help.html` in a new WebviewWindow |
+| `suggest_species` | Few-shot fish species suggestion via local Ollama (Gemma 3 vision). Sends N=4 random sample images per species (from bundled `resources/reference_images/<species>/`) plus the query image. Returns top-3 candidates with confidences. |
 
 ### Frontend state (renderer.js)
 
@@ -86,4 +87,4 @@ Requires `gh` CLI authenticated (`gh auth login`).
 - **Arrow keys** navigate between files (triggers rename of current if ready)
 - Skipped files go to `Skip/` subdirectory inside the selected folder
 - Point prefix (e.g. "남애") + point name are stored separately; combined on rename
-- Known prefixes: `남애`, `북애`, `동애`, `서애`, `속초`, `고성`
+- Prefixes: the autocomplete datalist is driven only by user input history (`history.prefixes`). `parseExistingFilename`'s prefix recognition uses `history.prefixes` ∪ `SEED_PREFIXES` (a small built-in list: `남애`, `북애`, `동애`, `서애`, `속초`, `고성`) so that fresh-install users can still parse already-renamed files.

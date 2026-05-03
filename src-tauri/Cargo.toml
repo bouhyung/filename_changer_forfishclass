@@ -1,6 +1,6 @@
 [package]
 name = "file-arrange-for-fish-class"
-version = "1.0.4"
+version = "1.0.5"
 description = "파일 이름 일괄 변경 앱"
 authors = ["you"]
 license = ""

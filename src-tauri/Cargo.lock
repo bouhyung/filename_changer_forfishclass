@@ -684,7 +684,7 @@ dependencies = [
 
 [[package]]
 name = "file-arrange-for-fish-class"
-version = "1.0.5"
+version = "1.0.6"
 dependencies = [
  "base64 0.22.1",
  "rand 0.8.5",

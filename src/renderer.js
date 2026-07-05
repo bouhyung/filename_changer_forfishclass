@@ -17,6 +17,11 @@ function isRawFile(fileName) {
   return RAW_EXT.includes(getExt(fileName))
 }
 
+function isJpegFile(fileName) {
+  const ext = getExt(fileName)
+  return ext === '.jpg' || ext === '.jpeg'
+}
+
 function joinPath(folder, name) {
   const sep = folder.includes('\\') ? '\\' : '/'
   return folder.endsWith(sep) ? folder + name : folder + sep + name
@@ -33,6 +38,8 @@ let imageFiles = []
 let currentIndex = 0
 let fishInputCache = {}
 let parsedCache = {}
+// 회전 후 웹뷰 이미지 캐시를 우회하기 위한 파일별 버전 카운터 (?v=N)
+let imageVersionMap = {}
 let renameCount = 0
 let skipCount = 0
 let ollamaEndpoint = ''
@@ -64,6 +71,7 @@ const btnReload       = document.getElementById('btnReload')
 const btnPrev         = document.getElementById('btnPrev')
 const btnNext         = document.getElementById('btnNext')
 const btnSkip         = document.getElementById('btnSkip')
+const btnRotate       = document.getElementById('btnRotate')
 const btnSuggest      = document.getElementById('btnSuggest')
 const suggestionRowEl = document.getElementById('suggestionRow')
 const lblFishName     = document.getElementById('lblFishName')
@@ -158,6 +166,28 @@ btnPrev.addEventListener('click', () => goToIndex(currentIndex - 1))
 btnNext.addEventListener('click', () => goToIndex(currentIndex + 1))
 
 btnSkip.addEventListener('click', skipCurrent)
+
+let isRotating = false
+btnRotate.addEventListener('click', async () => {
+  if (isRotating || !imageFiles.length || !currentFolder) return
+  const fileName = imageFiles[currentIndex]
+  if (!isJpegFile(fileName)) return
+  isRotating = true
+  try {
+    const result = await invoke('rotate_image', { folderPath: currentFolder, fileName })
+    if (result.success) {
+      imageVersionMap[fileName] = (imageVersionMap[fileName] || 0) + 1
+      imagePreviewEl.src = mediaSrc(fileName)
+      statusLeft.textContent = `회전 완료: ${fileName}`
+    } else {
+      statusLeft.textContent = `회전 실패: ${result.error}`
+    }
+  } catch (err) {
+    statusLeft.textContent = `회전 실패: ${err.message || err}`
+  } finally {
+    isRotating = false
+  }
+})
 
 btnSuggest.addEventListener('click', suggestCurrent)
 
@@ -357,12 +387,20 @@ chkUncertain.addEventListener('change', updateFilenamePreview)
 
 // ── 핵심 로직 ────────────────────────────────────────────
 
+// 회전된 파일은 URL 버전을 올려 웹뷰가 캐시된 이전 방향의 이미지를 쓰지 않게 한다
+function mediaSrc(fileName) {
+  let src = convertFileSrc(joinPath(currentFolder, fileName))
+  if (imageVersionMap[fileName]) src += '?v=' + imageVersionMap[fileName]
+  return src
+}
+
 async function loadImages() {
   if (!currentFolder) return
   imageFiles = await invoke('read_files', { folderPath: currentFolder })
   currentIndex = 0
   fishInputCache = {}
   parsedCache = {}
+  imageVersionMap = {}
   renameCount = 0
   skipCount = 0
   btnReload.disabled = false
@@ -390,6 +428,10 @@ async function performRename(oldName, newName) {
   if (result.success) {
     delete parsedCache[oldName]
     delete fishInputCache[oldName]
+    if (imageVersionMap[oldName]) {
+      imageVersionMap[newName] = imageVersionMap[oldName]
+      delete imageVersionMap[oldName]
+    }
     imageFiles[currentIndex] = newName
     renameCount++
     pushHistoryFromCurrent()
@@ -449,6 +491,7 @@ async function showCurrentImage({ focusInput = false } = {}) {
     btnNext.disabled = true
     btnSkip.disabled = true
     btnSuggest.disabled = true
+    btnRotate.classList.add('hidden')
     return
   }
 
@@ -458,10 +501,11 @@ async function showCurrentImage({ focusInput = false } = {}) {
   const fileName = imageFiles[currentIndex]
   const isVideo = isVideoFile(fileName)
   btnSuggest.disabled = isVideo || isRawFile(fileName)
+  btnRotate.classList.toggle('hidden', !isJpegFile(fileName))
 
   if (isVideo) {
     videoPreviewEl.pause()
-    videoPreviewEl.src = convertFileSrc(joinPath(currentFolder, fileName))
+    videoPreviewEl.src = mediaSrc(fileName)
     videoPreviewEl.classList.remove('hidden')
     imagePreviewEl.src = ''
     imagePreviewEl.classList.add('hidden')
@@ -469,7 +513,7 @@ async function showCurrentImage({ focusInput = false } = {}) {
     const ext = getExt(fileName)
     imagePreviewEl.src = isRawFile(fileName)
       ? makePlaceholderSvg(ext)
-      : convertFileSrc(joinPath(currentFolder, fileName))
+      : mediaSrc(fileName)
     imagePreviewEl.alt = fileName
     imagePreviewEl.classList.remove('hidden')
     videoPreviewEl.pause()

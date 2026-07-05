@@ -175,6 +175,137 @@ fn move_to_skip(folder_path: String, file_name: String) -> OpResult {
     }
 }
 
+// EXIF Orientation 값에 시계 방향 90° 회전을 합성한다 (표준 매핑 테이블)
+fn rotate_cw_orientation(o: u16) -> u16 {
+    match o {
+        1 => 6,
+        6 => 3,
+        3 => 8,
+        8 => 1,
+        2 => 7,
+        7 => 4,
+        4 => 5,
+        5 => 2,
+        _ => 6, // 알 수 없는 값은 정상(1)으로 간주하고 90° 회전
+    }
+}
+
+// JPEG의 EXIF Orientation 태그(0x0112) 값 2바이트만 제자리에서 수정한다.
+// 픽셀 데이터와 다른 모든 메타데이터는 바이트 단위로 그대로 유지된다.
+fn patch_jpeg_orientation(bytes: &mut [u8]) -> Result<(u16, u16), String> {
+    if bytes.len() < 4 || bytes[0] != 0xFF || bytes[1] != 0xD8 {
+        return Err("JPEG 형식이 아닙니다.".into());
+    }
+    let mut i = 2usize;
+    while i + 4 <= bytes.len() {
+        if bytes[i] != 0xFF {
+            return Err("JPEG 구조를 해석할 수 없습니다.".into());
+        }
+        let marker = bytes[i + 1];
+        if marker == 0xFF {
+            i += 1;
+            continue;
+        }
+        if marker == 0x01 || (0xD0..=0xD7).contains(&marker) {
+            i += 2;
+            continue;
+        }
+        if marker == 0xDA || marker == 0xD9 {
+            break; // 이미지 데이터 시작 — EXIF는 그 앞에만 존재
+        }
+        let len = ((bytes[i + 2] as usize) << 8) | bytes[i + 3] as usize;
+        if len < 2 || i + 2 + len > bytes.len() {
+            return Err("JPEG 세그먼트 길이가 올바르지 않습니다.".into());
+        }
+        if marker == 0xE1 && len >= 16 && &bytes[i + 4..i + 10] == b"Exif\0\0" {
+            return patch_tiff_orientation(bytes, i + 10, i + 2 + len);
+        }
+        i += 2 + len;
+    }
+    Err("EXIF 정보가 없어 회전할 수 없습니다. (카메라 원본 JPG만 지원)".into())
+}
+
+fn patch_tiff_orientation(
+    bytes: &mut [u8],
+    tiff_start: usize,
+    tiff_end: usize,
+) -> Result<(u16, u16), String> {
+    let tiff = &bytes[tiff_start..tiff_end];
+    if tiff.len() < 8 {
+        return Err("EXIF 데이터가 손상되었습니다.".into());
+    }
+    let le = match &tiff[0..2] {
+        b"II" => true,
+        b"MM" => false,
+        _ => return Err("EXIF 바이트 순서를 해석할 수 없습니다.".into()),
+    };
+    let rd16 = |b: &[u8], p: usize| -> Option<u16> {
+        let s = b.get(p..p + 2)?;
+        Some(if le {
+            u16::from_le_bytes([s[0], s[1]])
+        } else {
+            u16::from_be_bytes([s[0], s[1]])
+        })
+    };
+    let rd32 = |b: &[u8], p: usize| -> Option<u32> {
+        let s = b.get(p..p + 4)?;
+        Some(if le {
+            u32::from_le_bytes([s[0], s[1], s[2], s[3]])
+        } else {
+            u32::from_be_bytes([s[0], s[1], s[2], s[3]])
+        })
+    };
+    let ifd0 = rd32(tiff, 4).ok_or("EXIF IFD 오프셋 오류")? as usize;
+    let count = rd16(tiff, ifd0).ok_or("EXIF IFD 구조 오류")? as usize;
+    for k in 0..count {
+        let e = ifd0 + 2 + k * 12;
+        let tag = rd16(tiff, e).ok_or("EXIF 엔트리 읽기 오류")?;
+        if tag == 0x0112 {
+            let cur = rd16(tiff, e + 8).ok_or("Orientation 값 읽기 오류")?;
+            let new = rotate_cw_orientation(cur);
+            let abs = tiff_start + e + 8;
+            let nb = if le { new.to_le_bytes() } else { new.to_be_bytes() };
+            bytes[abs] = nb[0];
+            bytes[abs + 1] = nb[1];
+            return Ok((cur, new));
+        }
+    }
+    Err("EXIF에 회전(Orientation) 정보가 없어 회전할 수 없습니다.".into())
+}
+
+#[tauri::command]
+fn rotate_image(folder_path: String, file_name: String) -> OpResult {
+    fn fail(msg: String) -> OpResult {
+        OpResult { success: false, error: Some(msg) }
+    }
+    if let Err(e) = validate_file_name(&file_name) {
+        return fail(e);
+    }
+    let ext = get_ext(&file_name);
+    if ext != ".jpg" && ext != ".jpeg" {
+        return fail("JPEG(.jpg/.jpeg) 파일만 회전을 지원합니다.".into());
+    }
+    let path = Path::new(&folder_path).join(&file_name);
+    let mut bytes = match fs::read(&path) {
+        Ok(b) => b,
+        Err(e) => return fail(format!("파일 읽기 실패: {}", e)),
+    };
+    if let Err(e) = patch_jpeg_orientation(&mut bytes) {
+        return fail(e);
+    }
+    // 임시 파일에 쓴 뒤 원자적으로 교체 — 쓰기 도중 실패해도 원본이 손상되지 않는다
+    let tmp = Path::new(&folder_path).join(format!(".{}.rotating", file_name));
+    if let Err(e) = fs::write(&tmp, &bytes) {
+        let _ = fs::remove_file(&tmp);
+        return fail(format!("임시 파일 쓰기 실패: {}", e));
+    }
+    if let Err(e) = fs::rename(&tmp, &path) {
+        let _ = fs::remove_file(&tmp);
+        return fail(format!("파일 교체 실패: {}", e));
+    }
+    OpResult { success: true, error: None }
+}
+
 fn config_path(app: &tauri::AppHandle) -> PathBuf {
     let dir = app
         .path()
@@ -525,6 +656,76 @@ mod tests {
         assert!(validate_file_name(".").is_err());
     }
 
+    fn synthetic_jpeg(le: bool, orientation: u16) -> Vec<u8> {
+        let mut tiff: Vec<u8> = Vec::new();
+        if le {
+            tiff.extend(b"II");
+            tiff.extend(42u16.to_le_bytes());
+            tiff.extend(8u32.to_le_bytes());
+            tiff.extend(1u16.to_le_bytes()); // IFD0 엔트리 수
+            tiff.extend(0x0112u16.to_le_bytes()); // Orientation 태그
+            tiff.extend(3u16.to_le_bytes()); // SHORT
+            tiff.extend(1u32.to_le_bytes()); // count
+            tiff.extend(orientation.to_le_bytes());
+            tiff.extend([0u8, 0]);
+            tiff.extend(0u32.to_le_bytes()); // 다음 IFD 없음
+        } else {
+            tiff.extend(b"MM");
+            tiff.extend(42u16.to_be_bytes());
+            tiff.extend(8u32.to_be_bytes());
+            tiff.extend(1u16.to_be_bytes());
+            tiff.extend(0x0112u16.to_be_bytes());
+            tiff.extend(3u16.to_be_bytes());
+            tiff.extend(1u32.to_be_bytes());
+            tiff.extend(orientation.to_be_bytes());
+            tiff.extend([0u8, 0]);
+            tiff.extend(0u32.to_be_bytes());
+        }
+        let mut jpeg = vec![0xFF, 0xD8, 0xFF, 0xE1];
+        jpeg.extend(((tiff.len() + 8) as u16).to_be_bytes());
+        jpeg.extend(b"Exif\0\0");
+        jpeg.extend(&tiff);
+        jpeg.extend([0xFF, 0xD9]);
+        jpeg
+    }
+
+    #[test]
+    fn rotate_orientation_patches_only_two_bytes() {
+        for &le in &[true, false] {
+            let original = synthetic_jpeg(le, 1);
+            let mut rotated = original.clone();
+            let (cur, new) = patch_jpeg_orientation(&mut rotated).unwrap();
+            assert_eq!((cur, new), (1, 6));
+            let diff: Vec<usize> = original
+                .iter()
+                .zip(rotated.iter())
+                .enumerate()
+                .filter(|(_, (a, b))| a != b)
+                .map(|(i, _)| i)
+                .collect();
+            assert!(diff.len() <= 2, "2바이트 초과 변경: {:?}", diff);
+        }
+    }
+
+    #[test]
+    fn rotate_orientation_cycles_through_four_states() {
+        let mut jpeg = synthetic_jpeg(true, 1);
+        let mut seen = Vec::new();
+        for _ in 0..4 {
+            let (_, new) = patch_jpeg_orientation(&mut jpeg).unwrap();
+            seen.push(new);
+        }
+        assert_eq!(seen, vec![6, 3, 8, 1]); // 90° × 4 = 원상 복귀
+    }
+
+    #[test]
+    fn rotate_orientation_rejects_non_jpeg() {
+        let mut png = vec![0x89, b'P', b'N', b'G', 0, 0, 0, 0];
+        assert!(patch_jpeg_orientation(&mut png).is_err());
+        let mut no_exif = vec![0xFF, 0xD8, 0xFF, 0xD9];
+        assert!(patch_jpeg_orientation(&mut no_exif).is_err());
+    }
+
     #[test]
     fn unique_dest_numbers_conflicts() {
         let dir = std::env::temp_dir().join(format!("fish_test_{}", std::process::id()));
@@ -549,6 +750,7 @@ pub fn run() {
             read_files,
             rename_file,
             move_to_skip,
+            rotate_image,
             load_defaults,
             save_defaults,
             load_history,

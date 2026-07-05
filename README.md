@@ -6,7 +6,38 @@
 
 ---
 
-## 빠른 시작
+## 설치
+
+[Releases](../../releases)에서 최신 버전을 내려받아 설치합니다.
+
+| 플랫폼 | 파일 |
+|--------|------|
+| Mac (Apple Silicon) | `*_aarch64.dmg` |
+| Windows | `*_x64-setup.exe` |
+
+> [!IMPORTANT]
+> **macOS에서 "손상되었기 때문에 열 수 없습니다" 메시지가 뜨는 경우**
+>
+> 코드 서명이 없는 앱이라 나타나는 정상적인 현상입니다. 터미널에서 아래 한 줄을 실행한 뒤 다시 열면 됩니다.
+>
+> ```bash
+> xattr -cr "/Applications/File Arrange for Fish Class.app"
+> ```
+
+---
+
+## 주요 기능
+
+- **일괄 리네이밍**: 사진/영상을 한 장씩 넘기며 `{원본이름}_{물고기}_{포인트}_{촬영자}_{날짜}.jpg` 형식으로 이름 변경 (Enter로 적용+다음 이동)
+- **자동 완성**: 지역/포인트 입력 이력 기반 자동 완성, 이미 리네임된 파일은 폼에 자동 파싱 표시
+- **이미지 회전**: 미리보기 우상단 회전 버튼 — EXIF 방식이라 **화질 손실 0, 메타데이터 보존** (카메라 원본 JPG 지원)
+- **어종 추천**: 로컬 Ollama(Gemma 3 비전)로 어종 후보 추천 (물고기 이름 라벨 Shift+클릭으로 켜기)
+- **스킵**: 판별 불가 사진은 `Skip/` 하위 폴더로 이동 (동일 이름 자동 넘버링)
+- **자연 정렬**: `IMG_2 → IMG_10` 순서로 촬영 순서대로 탐색
+
+---
+
+## 빠른 시작 (개발)
 
 ```bash
 # 개발 모드
@@ -146,8 +177,4 @@ git push origin v1.0.0
 - **macOS 빌드**: macOS에서만 가능
 - **Windows MSI**: WiX 툴셋이 Windows 전용 → Windows에서만 빌드
 - **Windows NSIS**: macOS에서 크로스 컴파일 가능
-- 코드 서명 없는 앱: macOS에서 **"File Arrange for Fish Class is damaged"** 메시지가 뜨면 터미널에서 아래 명령어 실행 후 재시도
-
-```bash
-xattr -cr "/Applications/File Arrange for Fish Class.app"
-```
+- 코드 서명 없는 앱: macOS에서 "손상됨" 메시지가 뜨면 [설치](#설치) 섹션의 `xattr` 명령 참고

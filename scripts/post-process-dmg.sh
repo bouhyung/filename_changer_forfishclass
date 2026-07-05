@@ -13,7 +13,16 @@ if [ -z "$DMG" ] || [ ! -f "$DMG" ]; then
 fi
 
 WORK="$(mktemp -d -t dmg-postprocess)"
-trap 'rm -rf "$WORK"' EXIT
+MOUNT_DIR=""
+# 중간 실패 시에도 마운트된 볼륨을 반드시 detach — 남은 마운트는 다음 빌드의
+# DMG 생성(create-dmg 볼륨 이름 충돌)을 실패시킨다
+cleanup() {
+  if [ -n "$MOUNT_DIR" ] && [ -d "$MOUNT_DIR" ]; then
+    hdiutil detach "$MOUNT_DIR" -quiet -force 2>/dev/null || true
+  fi
+  rm -rf "$WORK"
+}
+trap cleanup EXIT
 
 echo ">>> [post-process-dmg] $(basename "$DMG")"
 hdiutil convert "$DMG" -format UDRW -o "$WORK/rw.dmg" -quiet
@@ -29,6 +38,7 @@ for f in ".VolumeIcon.icns" ".DS_Store" ".background" ".fseventsd" ".Trashes"; d
 done
 
 hdiutil detach "$MOUNT_DIR" -quiet
+MOUNT_DIR=""
 hdiutil convert "$WORK/rw.dmg" -format UDZO -imagekey zlib-level=9 -o "$WORK/final.dmg" -quiet
 mv "$WORK/final.dmg" "$DMG"
 echo "    → hidden flag 적용 완료"

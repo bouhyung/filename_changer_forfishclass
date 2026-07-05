@@ -12,9 +12,9 @@ cd "$ROOT"
 
 # 버전 파일 외 uncommitted 변경사항 확인
 if ! git diff --quiet -- ':!build/version.json' ':!package.json' \
-     ':!src-tauri/tauri.conf.json' ':!src-tauri/Cargo.toml' || \
+     ':!src-tauri/tauri.conf.json' ':!src-tauri/Cargo.toml' ':!src-tauri/Cargo.lock' || \
    ! git diff --cached --quiet -- ':!build/version.json' ':!package.json' \
-     ':!src-tauri/tauri.conf.json' ':!src-tauri/Cargo.toml'; then
+     ':!src-tauri/tauri.conf.json' ':!src-tauri/Cargo.toml' ':!src-tauri/Cargo.lock'; then
   echo "오류: 커밋되지 않은 변경사항이 있습니다. 먼저 커밋 후 릴리즈하세요."
   echo ""
   git status --short
@@ -83,7 +83,7 @@ for f in "${ASSETS[@]}"; do echo "  - $(basename "$f")"; done
 
 echo ""
 echo ">>> 버전 변경사항 커밋..."
-git add build/version.json package.json src-tauri/tauri.conf.json src-tauri/Cargo.toml
+git add build/version.json package.json src-tauri/tauri.conf.json src-tauri/Cargo.toml src-tauri/Cargo.lock
 if git diff --staged --quiet; then
   echo ">>> 버전 변경 없음 (이미 $VERSION)"
 else

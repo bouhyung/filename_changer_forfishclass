@@ -58,6 +58,15 @@ fi
 # DMG
 copy_matching "$BUNDLE_DIR/dmg" ".dmg"
 
+# DMG 후처리 — .VolumeIcon.icns 등에 hidden flag(kIsInvisible) 부여
+# Tauri의 bundle_dmg.sh가 이 플래그를 안 줘서 Finder의 "숨김 파일 보기"가 켜진
+# 사용자에게는 .VolumeIcon.icns가 노출됨.
+if [[ "$OSTYPE" == "darwin"* ]] && [ -d "$BUNDLE_DIR/dmg" ]; then
+  for dmg in "$DIST_DIR"/*.dmg; do
+    [ -e "$dmg" ] && bash "$ROOT/scripts/post-process-dmg.sh" "$dmg"
+  done
+fi
+
 # Windows
 copy_matching "$BUNDLE_DIR/msi" ".msi"
 copy_matching "$BUNDLE_DIR/nsis" ".exe"

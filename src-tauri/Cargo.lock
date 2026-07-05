@@ -684,7 +684,7 @@ dependencies = [
 
 [[package]]
 name = "file-arrange-for-fish-class"
-version = "1.0.4"
+version = "1.0.5"
 dependencies = [
  "base64 0.22.1",
  "rand 0.8.5",
@@ -694,7 +694,6 @@ dependencies = [
  "tauri",
  "tauri-build",
  "tauri-plugin-dialog",
- "tauri-plugin-fs",
  "tokio",
 ]
 

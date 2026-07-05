@@ -1,5 +1,13 @@
 {
   "bundle": {
     "targets": ["msi", "nsis"]
+  },
+  "app": {
+    "security": {
+      "assetProtocol": {
+        "enable": true,
+        "scope": ["**"]
+      }
+    }
   }
 }

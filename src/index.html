@@ -2,7 +2,7 @@
 <html lang="ko">
 <head>
   <meta charset="UTF-8" />
-  <meta http-equiv="Content-Security-Policy" content="default-src 'self' ipc: https://ipc.localhost; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data: asset: https://asset.localhost; media-src 'self' asset: https://asset.localhost" />
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self' ipc: https://ipc.localhost; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: asset: https://asset.localhost; media-src 'self' asset: https://asset.localhost" />
   <title>File Arrange for Fish Class</title>
   <link rel="stylesheet" href="styles.css" />
 </head>
@@ -25,34 +25,6 @@
 </header>
 
 <div class="content">
-  <div class="card defaults-card">
-    <div class="card-title">기본 정보</div>
-    <div class="form-row">
-      <div class="form-group">
-        <label>지역/접두사</label>
-        <input type="text" id="inputPointPrefix" list="pointPrefixHistory" placeholder="예: 남애" autocomplete="off" />
-        <datalist id="pointPrefixHistory"></datalist>
-      </div>
-      <div class="form-group">
-        <label>포인트이름</label>
-        <input type="text" id="inputPointName" list="pointNameHistory" placeholder="예: 밸리" autocomplete="off" />
-        <datalist id="pointNameHistory"></datalist>
-        <label class="checkbox-label">
-          <input type="checkbox" id="chkNight" /> 야간
-        </label>
-      </div>
-      <div class="form-group">
-        <label>촬영자이름</label>
-        <input type="text" id="inputPhotographer" placeholder="예: 홍길동" />
-      </div>
-      <div class="form-group">
-        <label>촬영일자</label>
-        <input type="text" id="inputShootDate" placeholder="예: 20250607" />
-        <button type="button" class="btn-secondary btn-small" id="btnToday">오늘 날짜</button>
-      </div>
-    </div>
-  </div>
-
   <div class="card viewer-card">
     <div class="viewer-main">
       <div class="image-container" id="imageContainer">
@@ -67,6 +39,30 @@
       </div>
 
       <div class="viewer-controls">
+        <div class="defaults-row">
+          <div class="form-group">
+            <label>지역/접두사</label>
+            <input type="text" id="inputPointPrefix" list="pointPrefixHistory" placeholder="예: 남애" autocomplete="off" />
+            <datalist id="pointPrefixHistory"></datalist>
+          </div>
+          <div class="form-group">
+            <label>포인트이름</label>
+            <input type="text" id="inputPointName" list="pointNameHistory" placeholder="예: 밸리" autocomplete="off" />
+            <datalist id="pointNameHistory"></datalist>
+            <label class="checkbox-label">
+              <input type="checkbox" id="chkNight" /> 야간
+            </label>
+          </div>
+          <div class="form-group">
+            <label>촬영자이름</label>
+            <input type="text" id="inputPhotographer" placeholder="예: 홍길동" />
+          </div>
+          <div class="form-group">
+            <label>촬영일자</label>
+            <input type="text" id="inputShootDate" placeholder="예: 20250607" />
+            <button type="button" class="btn-secondary btn-small" id="btnToday">오늘 날짜</button>
+          </div>
+        </div>
         <div class="fish-name-row">
           <label id="lblFishName" title="Shift+클릭으로 동정 추천 토글">물고기 이름</label>
           <input type="text" id="inputFishName" placeholder="예: 황점개볼락" />
@@ -77,17 +73,15 @@
           <label class="checkbox-label">
             <input type="checkbox" id="chkUncertain" /> 이름 불명확/모름
           </label>
-        </div>
-        <div class="suggestion-row hidden" id="suggestionRow"></div>
-        <div class="filename-preview filename-preview-muted" id="filenamePreview"></div>
-        <div class="nav-buttons">
-          <div class="nav-buttons-left">
+          <span class="nav-group">
             <button class="btn-secondary" id="btnPrev" disabled>이전</button>
             <button class="btn-secondary" id="btnNext" disabled>다음</button>
             <span class="viewer-index" id="viewerIndex">0 / 0</span>
-          </div>
-          <button class="btn-danger" id="btnSkip" disabled>스킵</button>
+            <button class="btn-danger" id="btnSkip" disabled>스킵</button>
+          </span>
         </div>
+        <div class="suggestion-row hidden" id="suggestionRow"></div>
+        <div class="filename-preview filename-preview-muted" id="filenamePreview"></div>
       </div>
     </div>
   </div>

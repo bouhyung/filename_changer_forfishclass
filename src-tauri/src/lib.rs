@@ -2,8 +2,10 @@ use base64::Engine;
 use rand::seq::SliceRandom;
 use rand::SeedableRng;
 use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
 use std::fs;
 use std::path::{Path, PathBuf};
+use std::sync::{Mutex, OnceLock};
 use tauri::Manager;
 
 const RAW_EXT: &[&str] = &[
@@ -38,6 +40,58 @@ fn is_media_file(name: &str) -> bool {
     BROWSER_IMAGE_EXT.contains(&ext.as_str()) || is_raw_ext(&ext) || VIDEO_EXT.contains(&ext.as_str())
 }
 
+// 커맨드 인자로 받은 파일 이름이 순수 파일명(경로 구분자·`..` 없음)인지 검증.
+// 웹뷰가 손상되더라도 선택 폴더 밖의 파일을 건드릴 수 없도록 하는 심층 방어.
+fn validate_file_name(name: &str) -> Result<(), String> {
+    let mut comps = Path::new(name).components();
+    let single_normal = matches!(
+        (comps.next(), comps.next()),
+        (Some(std::path::Component::Normal(_)), None)
+    );
+    if single_normal && !name.contains('/') && !name.contains('\\') {
+        Ok(())
+    } else {
+        Err("잘못된 파일 이름입니다.".to_string())
+    }
+}
+
+// 숫자 구간은 수치로 비교하는 자연 정렬 (IMG_2 < IMG_10)
+fn natural_cmp(a: &str, b: &str) -> std::cmp::Ordering {
+    use std::cmp::Ordering;
+    let ac: Vec<char> = a.chars().collect();
+    let bc: Vec<char> = b.chars().collect();
+    let (mut i, mut j) = (0usize, 0usize);
+    while i < ac.len() && j < bc.len() {
+        if ac[i].is_ascii_digit() && bc[j].is_ascii_digit() {
+            let si = i;
+            while i < ac.len() && ac[i].is_ascii_digit() {
+                i += 1;
+            }
+            let sj = j;
+            while j < bc.len() && bc[j].is_ascii_digit() {
+                j += 1;
+            }
+            let na: String = ac[si..i].iter().collect();
+            let nb: String = bc[sj..j].iter().collect();
+            let ta = na.trim_start_matches('0');
+            let tb = nb.trim_start_matches('0');
+            let ord = ta.len().cmp(&tb.len()).then_with(|| ta.cmp(tb));
+            if ord != Ordering::Equal {
+                return ord;
+            }
+        } else {
+            let la = ac[i].to_lowercase().next().unwrap_or(ac[i]);
+            let lb = bc[j].to_lowercase().next().unwrap_or(bc[j]);
+            if la != lb {
+                return la.cmp(&lb);
+            }
+            i += 1;
+            j += 1;
+        }
+    }
+    (ac.len() - i).cmp(&(bc.len() - j)).then_with(|| a.cmp(b))
+}
+
 #[tauri::command]
 fn read_files(folder_path: String) -> Result<Vec<String>, String> {
     let entries =
@@ -53,7 +107,7 @@ fn read_files(folder_path: String) -> Result<Vec<String>, String> {
             }
         })
         .collect();
-    files.sort();
+    files.sort_by(|a, b| natural_cmp(a, b));
     Ok(files)
 }
 
@@ -69,6 +123,9 @@ fn rename_file(folder_path: String, old_name: String, new_name: String) -> OpRes
     if old_name == new_name {
         return OpResult { success: true, error: None };
     }
+    if let Err(e) = validate_file_name(&old_name).and_then(|_| validate_file_name(&new_name)) {
+        return OpResult { success: false, error: Some(e) };
+    }
     let old_path = Path::new(&folder_path).join(&old_name);
     let new_path = Path::new(&folder_path).join(&new_name);
     if new_path.exists() {
@@ -80,14 +137,38 @@ fn rename_file(folder_path: String, old_name: String, new_name: String) -> OpRes
     }
 }
 
+// Skip 폴더에 같은 이름이 이미 있으면 "name (2).ext" 식으로 비어 있는 이름을 찾는다.
+// fs::rename은 유닉스에서 기존 파일을 조용히 덮어쓰므로, 이 함수가 데이터 손실을 막는다.
+fn unique_dest(dir: &Path, file_name: &str) -> PathBuf {
+    let dest = dir.join(file_name);
+    if !dest.exists() {
+        return dest;
+    }
+    let (stem, ext) = match file_name.rfind('.') {
+        Some(i) if i > 0 => (&file_name[..i], &file_name[i..]),
+        _ => (file_name, ""),
+    };
+    let mut n = 2;
+    loop {
+        let candidate = dir.join(format!("{} ({}){}", stem, n, ext));
+        if !candidate.exists() {
+            return candidate;
+        }
+        n += 1;
+    }
+}
+
 #[tauri::command]
 fn move_to_skip(folder_path: String, file_name: String) -> OpResult {
+    if let Err(e) = validate_file_name(&file_name) {
+        return OpResult { success: false, error: Some(e) };
+    }
     let skip_dir = Path::new(&folder_path).join("Skip");
     let src = Path::new(&folder_path).join(&file_name);
-    let dest = skip_dir.join(&file_name);
     if let Err(e) = fs::create_dir_all(&skip_dir) {
         return OpResult { success: false, error: Some(e.to_string()) };
     }
+    let dest = unique_dest(&skip_dir, &file_name);
     match fs::rename(&src, &dest) {
         Ok(()) => OpResult { success: true, error: None },
         Err(e) => OpResult { success: false, error: Some(e.to_string()) },
@@ -180,6 +261,21 @@ fn read_image_as_base64(path: &Path) -> Result<String, String> {
     Ok(base64::engine::general_purpose::STANDARD.encode(bytes))
 }
 
+// 번들 참조 이미지는 앱 수명 동안 불변이므로 목록·인코딩 결과를 캐시한다.
+static REF_SPECIES: OnceLock<Vec<(String, Vec<PathBuf>)>> = OnceLock::new();
+static REF_B64_CACHE: OnceLock<Mutex<HashMap<PathBuf, String>>> = OnceLock::new();
+static HTTP_CLIENT: OnceLock<reqwest::Client> = OnceLock::new();
+
+fn read_reference_image_b64(path: &Path) -> Result<String, String> {
+    let cache = REF_B64_CACHE.get_or_init(|| Mutex::new(HashMap::new()));
+    if let Some(hit) = cache.lock().unwrap().get(path).cloned() {
+        return Ok(hit);
+    }
+    let b64 = read_image_as_base64(path)?;
+    cache.lock().unwrap().insert(path.to_path_buf(), b64.clone());
+    Ok(b64)
+}
+
 fn collect_reference_images(root: &Path) -> Result<Vec<(String, Vec<PathBuf>)>, String> {
     let entries = fs::read_dir(root)
         .map_err(|e| format!("참조 이미지 폴더를 읽을 수 없습니다 ({}): {}", root.display(), e))?;
@@ -224,12 +320,14 @@ fn collect_reference_images(root: &Path) -> Result<Vec<(String, Vec<PathBuf>)>, 
 #[tauri::command]
 async fn suggest_species(
     app: tauri::AppHandle,
-    image_path: String,
+    folder_path: String,
+    file_name: String,
     ollama_endpoint: Option<String>,
     ollama_model: Option<String>,
 ) -> Result<Vec<Candidate>, String> {
-    let query_path = PathBuf::from(&image_path);
-    let ext = get_ext(&query_path.file_name().unwrap_or_default().to_string_lossy());
+    validate_file_name(&file_name)?;
+    let query_path = Path::new(&folder_path).join(&file_name);
+    let ext = get_ext(&file_name);
     if !BROWSER_IMAGE_EXT.contains(&ext.as_str()) {
         return Err("RAW/HEIC 등은 동정 미지원 — JPG/PNG로 변환해주세요.".into());
     }
@@ -241,7 +339,13 @@ async fn suggest_species(
         .join("resources")
         .join("reference_images");
 
-    let species = collect_reference_images(&resource_root)?;
+    let species: &Vec<(String, Vec<PathBuf>)> = match REF_SPECIES.get() {
+        Some(s) => s,
+        None => {
+            let loaded = collect_reference_images(&resource_root)?;
+            REF_SPECIES.get_or_init(move || loaded)
+        }
+    };
 
     let query_b64 = read_image_as_base64(&query_path)?;
 
@@ -249,13 +353,13 @@ async fn suggest_species(
     let mut species_blocks: Vec<String> = Vec::new();
     {
         let mut rng = rand::rngs::SmallRng::from_entropy();
-        for (name, paths) in &species {
+        for (name, paths) in species {
             let mut sample: Vec<&PathBuf> = paths.iter().collect();
             sample.shuffle(&mut rng);
             sample.truncate(REFERENCE_SAMPLES_PER_SPECIES);
             let count = sample.len();
             for p in sample {
-                all_images_b64.push(read_image_as_base64(p)?);
+                all_images_b64.push(read_reference_image_b64(p)?);
             }
             species_blocks.push(format!("- {} ({}장)", name, count));
         }
@@ -274,6 +378,9 @@ async fn suggest_species(
     let endpoint = ollama_endpoint
         .filter(|s| !s.trim().is_empty())
         .unwrap_or_else(|| DEFAULT_OLLAMA_ENDPOINT.to_string());
+    if !endpoint.starts_with("http://") && !endpoint.starts_with("https://") {
+        return Err("Ollama 엔드포인트는 http:// 또는 https:// 주소여야 합니다.".into());
+    }
     let model = ollama_model
         .filter(|s| !s.trim().is_empty())
         .unwrap_or_else(|| DEFAULT_OLLAMA_MODEL.to_string());
@@ -292,10 +399,12 @@ async fn suggest_species(
     });
 
     let url = format!("{}/api/chat", endpoint.trim_end_matches('/'));
-    let client = reqwest::Client::builder()
-        .timeout(std::time::Duration::from_secs(180))
-        .build()
-        .map_err(|e| format!("HTTP 클라이언트 초기화 실패: {}", e))?;
+    let client = HTTP_CLIENT.get_or_init(|| {
+        reqwest::Client::builder()
+            .timeout(std::time::Duration::from_secs(180))
+            .build()
+            .expect("HTTP 클라이언트 초기화 실패")
+    });
     let resp = client
         .post(&url)
         .json(&body)
@@ -372,11 +481,70 @@ fn truncate(s: &str, n: usize) -> String {
     }
 }
 
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn natural_sort_orders_numeric_sequences() {
+        let mut files = vec![
+            "IMG_10.jpg".to_string(),
+            "IMG_2.jpg".to_string(),
+            "IMG_100.jpg".to_string(),
+            "IMG_1.jpg".to_string(),
+            "IMG_20.jpg".to_string(),
+        ];
+        files.sort_by(|a, b| natural_cmp(a, b));
+        assert_eq!(
+            files,
+            vec!["IMG_1.jpg", "IMG_2.jpg", "IMG_10.jpg", "IMG_20.jpg", "IMG_100.jpg"]
+        );
+    }
+
+    #[test]
+    fn natural_sort_handles_korean_and_plain_names() {
+        let mut files = vec!["돌돔_2.jpg".to_string(), "돌돔_10.jpg".to_string()];
+        files.sort_by(|a, b| natural_cmp(a, b));
+        assert_eq!(files, vec!["돌돔_2.jpg", "돌돔_10.jpg"]);
+    }
+
+    #[test]
+    fn validate_file_name_accepts_plain_names() {
+        assert!(validate_file_name("IMG_1234_돌돔_남애N_홍길동_20240815.jpg").is_ok());
+        assert!(validate_file_name("a.jpg").is_ok());
+    }
+
+    #[test]
+    fn validate_file_name_rejects_traversal() {
+        assert!(validate_file_name("../etc/passwd").is_err());
+        assert!(validate_file_name("..").is_err());
+        assert!(validate_file_name("/etc/passwd").is_err());
+        assert!(validate_file_name("a/b.jpg").is_err());
+        assert!(validate_file_name("a\\b.jpg").is_err());
+        assert!(validate_file_name("").is_err());
+        assert!(validate_file_name(".").is_err());
+    }
+
+    #[test]
+    fn unique_dest_numbers_conflicts() {
+        let dir = std::env::temp_dir().join(format!("fish_test_{}", std::process::id()));
+        fs::create_dir_all(&dir).unwrap();
+        assert_eq!(unique_dest(&dir, "a.jpg"), dir.join("a.jpg"));
+        fs::write(dir.join("a.jpg"), b"x").unwrap();
+        assert_eq!(unique_dest(&dir, "a.jpg"), dir.join("a (2).jpg"));
+        fs::write(dir.join("a (2).jpg"), b"x").unwrap();
+        assert_eq!(unique_dest(&dir, "a.jpg"), dir.join("a (3).jpg"));
+        // 확장자 없는 파일
+        fs::write(dir.join("noext"), b"x").unwrap();
+        assert_eq!(unique_dest(&dir, "noext"), dir.join("noext (2)"));
+        fs::remove_dir_all(&dir).unwrap();
+    }
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
-        .plugin(tauri_plugin_fs::init())
         .invoke_handler(tauri::generate_handler![
             read_files,
             rename_file,

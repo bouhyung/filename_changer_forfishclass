@@ -38,6 +38,9 @@ let skipCount = 0
 let ollamaEndpoint = ''
 let ollamaModel = ''
 let isSuggesting = false
+// 사용자가 직접 입력한 공유 기본값. 이미 리네임된 파일을 열람할 때 파싱값이
+// 폼에 표시되더라도 이 값은 오염되지 않고, 미처리 파일로 돌아오면 복원된다.
+let savedDefaults = { pointPrefix: '', pointName: '', photographerName: '', shootDate: '', nightMode: false }
 
 const folderPathEl      = document.getElementById('folderPath')
 const headerStatsEl     = document.getElementById('headerStats')
@@ -65,8 +68,29 @@ const btnSuggest      = document.getElementById('btnSuggest')
 const suggestionRowEl = document.getElementById('suggestionRow')
 const lblFishName     = document.getElementById('lblFishName')
 const btnToday        = document.getElementById('btnToday')
-const statusLeft      = document.getElementById('statusLeft')
-const statusRight     = document.getElementById('statusRight')
+const statusbarEl     = document.querySelector('.statusbar')
+const statusLeftEl    = document.getElementById('statusLeft')
+const statusRightEl   = document.getElementById('statusRight')
+
+// Status is shown as a transient bottom toast (only while there is a message),
+// so it no longer reserves permanent layout space. The total count lives in the header.
+let statusHideTimer = null
+function showStatusToast() {
+  if (statusHideTimer) clearTimeout(statusHideTimer)
+  const hasMsg = !!statusLeftEl.textContent && statusLeftEl.textContent !== '준비'
+  statusbarEl.classList.toggle('visible', hasMsg)
+  if (hasMsg) {
+    statusHideTimer = setTimeout(() => statusbarEl.classList.remove('visible'), 3000)
+  }
+}
+const statusLeft = {
+  set textContent(v) { statusLeftEl.textContent = v; showStatusToast() },
+  get textContent() { return statusLeftEl.textContent },
+}
+const statusRight = {
+  set textContent(v) { statusRightEl.textContent = v },
+  get textContent() { return statusRightEl.textContent },
+}
 const lightboxEl       = document.getElementById('lightbox')
 const lightboxImageEl  = document.getElementById('lightboxImage')
 const lightboxVideoEl  = document.getElementById('lightboxVideo')
@@ -89,6 +113,7 @@ const lightboxZoomValue = document.getElementById('lightboxZoomValue')
     if (defaults.ollamaEndpoint != null) ollamaEndpoint = defaults.ollamaEndpoint
     if (defaults.ollamaModel != null) ollamaModel = defaults.ollamaModel
   }
+  captureDefaultsFromForm()
   await loadHistory()
   const formPrefix = inputPointPrefix.value.trim()
   if (formPrefix && !history.prefixes.includes(formPrefix)) {
@@ -159,11 +184,13 @@ btnToday.addEventListener('click', () => {
   const m = String(now.getMonth() + 1).padStart(2, '0')
   const d = String(now.getDate()).padStart(2, '0')
   inputShootDate.value = `${y}${m}${d}`
+  savedDefaults.shootDate = inputShootDate.value
   saveDefaults()
   updateFilenamePreview()
 })
 
 function onDefaultInputChange() {
+  captureDefaultsFromForm()
   debouncedSaveDefaults()
   updateFilenamePreview()
 }
@@ -343,7 +370,6 @@ async function loadImages() {
   btnNext.disabled = false
   btnSkip.disabled = !imageFiles.length
   headerStatsEl.textContent = imageFiles.length ? `${imageFiles.length}개 미디어` : '미디어 없음'
-  statusLeft.textContent = imageFiles.length ? `총 ${imageFiles.length}개` : '준비'
   await showCurrentImage({ focusInput: true })
 }
 
@@ -357,6 +383,21 @@ function saveCurrentFishInput() {
   }
 }
 
+// rename 성공 처리의 단일 경로: 캐시 정리, 목록 갱신, 카운트, 이력, 상태 표시.
+// Enter(applyAndNext)와 화살표 이동(renameCurrentIfReady) 모두 이 함수를 거친다.
+async function performRename(oldName, newName) {
+  const result = await invoke('rename_file', { folderPath: currentFolder, oldName, newName })
+  if (result.success) {
+    delete parsedCache[oldName]
+    delete fishInputCache[oldName]
+    imageFiles[currentIndex] = newName
+    renameCount++
+    pushHistoryFromCurrent()
+    statusLeft.textContent = `변경 완료: ${newName}`
+  }
+  return result
+}
+
 async function renameCurrentIfReady() {
   const missing = getMissingBasicInfo()
   if (missing.length > 0) return true
@@ -365,18 +406,11 @@ async function renameCurrentIfReady() {
   const oldName = imageFiles[currentIndex]
   if (oldName === newName) return true
   try {
-    const result = await invoke('rename_file', { folderPath: currentFolder, oldName, newName })
-    if (result.success) {
-      delete parsedCache[oldName]
-      delete fishInputCache[oldName]
-      imageFiles[currentIndex] = newName
-      statusLeft.textContent = `변경 완료: ${newName}`
-      return true
-    } else {
-      statusLeft.textContent = `오류: ${result.error}`
-      alert(`파일 이름 변경 실패:\n${result.error}`)
-      return false
-    }
+    const result = await performRename(oldName, newName)
+    if (result.success) return true
+    statusLeft.textContent = `오류: ${result.error}`
+    alert(`파일 이름 변경 실패:\n${result.error}`)
+    return false
   } catch (err) {
     console.error('[renameCurrentIfReady]', err)
     statusLeft.textContent = `오류: ${err.message}`
@@ -385,9 +419,16 @@ async function renameCurrentIfReady() {
 }
 
 async function goToIndex(idx, { focusInput = false } = {}) {
+  if (isApplying) return
   if (idx < 0 || idx >= imageFiles.length) return
   saveCurrentFishInput()
-  const renamed = await renameCurrentIfReady()
+  isApplying = true
+  let renamed = false
+  try {
+    renamed = await renameCurrentIfReady()
+  } finally {
+    isApplying = false
+  }
   if (!renamed) return
   currentIndex = idx
   await showCurrentImage({ focusInput })
@@ -465,12 +506,21 @@ async function showCurrentImage({ focusInput = false } = {}) {
   }
 
   if (parsed && parsed.pointPrefix && parsed.pointName) {
+    // 이미 리네임된 파일: 그 파일의 파싱값을 폼에 표시 (savedDefaults는 건드리지 않음)
     inputPointPrefix.value = parsed.pointPrefix
     inputPointName.value = parsed.pointName
     chkNight.checked = parsed.pointNameEndsWithN
-    if (parsed.photographer) inputPhotographer.value = parsed.photographer
-    if (parsed.shootDate) inputShootDate.value = parsed.shootDate
+    inputPhotographer.value = parsed.photographer || savedDefaults.photographerName
+    inputShootDate.value = parsed.shootDate || savedDefaults.shootDate
+  } else {
+    // 미처리 파일: 사용자가 입력해 둔 기본값으로 복원 (파싱값 잔류로 인한 오염 방지)
+    inputPointPrefix.value = savedDefaults.pointPrefix
+    inputPointName.value = savedDefaults.pointName
+    chkNight.checked = savedDefaults.nightMode
+    inputPhotographer.value = savedDefaults.photographerName
+    inputShootDate.value = savedDefaults.shootDate
   }
+  refreshPointNameDatalist()
 
   updateFilenamePreview()
   updateNavState()
@@ -629,15 +679,18 @@ function extractOriginalBase(fileName) {
 
 function updateFilenamePreview() {
   const newName = buildNewFilename()
-  if (newName) {
+  const missing = getMissingBasicInfo()
+  if (newName && missing.length === 0) {
     filenamePreviewEl.textContent = '→ ' + newName
     filenamePreviewEl.classList.remove('filename-preview-muted')
     filenamePreviewEl.classList.add('filename-preview-ok')
   } else {
+    // 필수값이 하나라도 비면 실제로 Enter가 거부되므로, 미리보기도 준비 상태로 표시하지 않는다
     const current = imageFiles[currentIndex]
-    const missing = getMissingBasicInfo()
     const hint = missing.length > 0 ? `(필요: ${missing.join(', ')})` : '(물고기 이름을 입력하세요)'
-    filenamePreviewEl.textContent = current ? `현재: ${current} ${hint}` : ''
+    filenamePreviewEl.textContent = newName
+      ? `→ ${newName} ${hint}`
+      : (current ? `현재: ${current} ${hint}` : '')
     filenamePreviewEl.classList.remove('filename-preview-ok')
     filenamePreviewEl.classList.add('filename-preview-muted')
   }
@@ -701,13 +754,13 @@ async function suggestCurrent() {
     renderSuggestionMessage('이 형식은 동정 미지원입니다.', 'suggestion-error')
     return
   }
-  const imagePath = joinPath(currentFolder, fileName)
   isSuggesting = true
   btnSuggest.disabled = true
   renderSuggestionMessage('추천 중... (Ollama 응답 대기)', 'suggestion-loading')
   try {
     const candidates = await invoke('suggest_species', {
-      imagePath,
+      folderPath: currentFolder,
+      fileName,
       ollamaEndpoint: ollamaEndpoint || null,
       ollamaModel: ollamaModel || null,
     })
@@ -776,15 +829,9 @@ async function applyAndNext() {
 
   isApplying = true
   try {
-    const result = await invoke('rename_file', { folderPath: currentFolder, oldName, newName })
+    const result = await performRename(oldName, newName)
 
     if (result.success) {
-      delete parsedCache[oldName]
-      delete fishInputCache[oldName]
-      imageFiles[currentIndex] = newName
-      renameCount++
-      pushHistoryFromCurrent()
-      statusLeft.textContent = `변경 완료: ${newName}`
       if (currentIndex < imageFiles.length - 1) {
         currentIndex++
         await showCurrentImage({ focusInput: true })
@@ -818,14 +865,23 @@ function closeLightbox() {
   lightboxY = 0
 }
 
+function captureDefaultsFromForm() {
+  savedDefaults = {
+    pointPrefix: inputPointPrefix.value,
+    pointName: inputPointName.value,
+    photographerName: inputPhotographer.value,
+    shootDate: inputShootDate.value,
+    nightMode: chkNight.checked
+  }
+}
+
 function saveDefaults() {
   invoke('save_defaults', {
     defaults: {
-      pointPrefix: inputPointPrefix.value,
-      pointName: inputPointName.value,
-      photographerName: inputPhotographer.value,
-      shootDate: inputShootDate.value,
-      nightMode: chkNight.checked
+      ...savedDefaults,
+      // 폼에 없는 설정(defaults.json 직접 편집)이 저장 시 유실되지 않도록 함께 기록
+      ollamaEndpoint,
+      ollamaModel
     }
   })
 }

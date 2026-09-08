@@ -82,6 +82,12 @@ Requires `gh` CLI authenticated (`gh auth login`).
 
 전체 설계는 `docs/mybox-upload-design.md`. 현재 1단계(토큰 저장/검증 + 용량 조회)까지 구현됨.
 
+**UI 는 기본으로 숨겨져 있다.** 헤더의 `MyBox` 버튼은 `hidden` 상태로 시작하고,
+앱 제목(`#appTitle`)을 Shift+클릭하면 토글된다 (`localStorage` 의 `myboxVisible`).
+동정 추천 버튼(`suggestVisible`)과 같은 방식이다.
+공유 받은 폴더에는 업로드할 수 없어(설계 문서 2-5) 반 운영 방식이 정해지기 전까지
+일반 사용자에게 노출하지 않는다.
+
 - `client.rs` — MYBOX Open API 의 HTTP 와이어 포맷을 다루는 **유일한** 파일.
   공식 문서를 확인하지 못한 상태에서 작성했으므로, 스펙이 다르면 이 파일만 고치면 된다.
   기본 주소는 `https://open-api.mybox.naver.com/v1` 이며 설정에서 바꿀 수 있고(`mybox.json` 의 `apiBase`), 실패 시 HTTP 상태 코드와

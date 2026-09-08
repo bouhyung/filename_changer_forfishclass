@@ -1045,6 +1045,28 @@ const myboxSaveBtn   = document.getElementById('myboxSave')
 const myboxRefreshBtn = document.getElementById('myboxRefresh')
 const myboxClearBtn  = document.getElementById('myboxClear')
 
+// MyBox 연동은 아직 준비 중이라 기본으로 숨긴다.
+// 공유 받은 폴더에는 업로드할 수 없어 (docs/mybox-upload-design.md 2-5)
+// 반 운영 방식이 정해지기 전까지는 노출하지 않는다.
+// 동정 추천 버튼과 같은 방식으로, 앱 제목을 Shift+클릭하면 켜고 끌 수 있다.
+const MYBOX_VISIBLE_KEY = 'myboxVisible'
+const appTitleEl = document.getElementById('appTitle')
+const btnMybox = document.getElementById('btnMybox')
+
+function applyMyboxVisibility() {
+  const visible = localStorage.getItem(MYBOX_VISIBLE_KEY) === '1'
+  btnMybox.classList.toggle('hidden', !visible)
+  if (!visible) closeMyboxModal()
+}
+
+appTitleEl.addEventListener('click', (e) => {
+  if (!e.shiftKey) return
+  const next = localStorage.getItem(MYBOX_VISIBLE_KEY) !== '1'
+  localStorage.setItem(MYBOX_VISIBLE_KEY, next ? '1' : '0')
+  applyMyboxVisibility()
+})
+
+
 let myboxStatus = null
 
 function formatBytes(n) {
@@ -1199,7 +1221,7 @@ function closeMyboxModal() {
   myboxModal.classList.remove('active')
 }
 
-document.getElementById('btnMybox').addEventListener('click', openMyboxModal)
+btnMybox.addEventListener('click', openMyboxModal)
 document.getElementById('myboxClose').addEventListener('click', closeMyboxModal)
 document.getElementById('myboxBackdrop').addEventListener('click', closeMyboxModal)
 
@@ -1391,3 +1413,5 @@ myboxFolderPathEl.addEventListener('keydown', (e) => {
     myboxFolderCheckBtn.click()
   }
 })
+
+applyMyboxVisibility()

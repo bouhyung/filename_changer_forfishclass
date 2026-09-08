@@ -890,8 +890,31 @@ button:disabled {
 .mybox-folder-result.ok .folder-summary { color: var(--accent-green); }
 .mybox-folder-result.warn .folder-summary { color: var(--accent-red); }
 
+.mybox-folder-filterbar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 8px;
+}
+
+.mybox-folder-filter {
+  flex: 1;
+  padding: 6px 10px;
+  background: var(--bg-primary);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  color: var(--text-primary);
+  font-size: 12px;
+  font-family: inherit;
+}
+
+.mybox-folder-filter:focus {
+  outline: none;
+  border-color: var(--accent-blue);
+}
+
 .mybox-folder-list {
-  max-height: 200px;
+  max-height: 420px;
   overflow-y: auto;
   display: flex;
   flex-direction: column;

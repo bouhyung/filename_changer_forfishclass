@@ -1291,12 +1291,13 @@ const myboxFolderResultEl = document.getElementById('myboxFolderResult')
 function renderFolderProbe(probe) {
   myboxFolderResultEl.textContent = ''
   const atRoot = !probe.queryPath
+  const folders = probe.entries.filter(e => (e.itemType || '').toLowerCase() !== 'file')
 
   const summary = document.createElement('strong')
   summary.className = 'folder-summary'
   if (atRoot) {
     summary.textContent = probe.entries.length
-      ? `최상위에서 ${probe.entries.length}개를 찾았습니다.`
+      ? `최상위 ${probe.entries.length}개 (폴더 ${folders.length}개)`
       : '최상위가 비어 있습니다.'
     myboxFolderResultEl.className = 'mybox-folder-result'
   } else if (probe.found) {
@@ -1309,26 +1310,58 @@ function renderFolderProbe(probe) {
   }
   myboxFolderResultEl.appendChild(summary)
 
-  if (probe.entries.length) {
-    const list = document.createElement('ul')
-    list.className = 'mybox-folder-list'
-    for (const entry of probe.entries) {
-      const li = document.createElement('li')
-      const name = document.createElement('span')
-      name.textContent = entry.path || entry.name
-      const type = document.createElement('span')
-      type.className = 'entry-type'
-      type.textContent = entry.itemType || (atRoot ? '' : '폴더')
-      li.append(name, type)
-      list.appendChild(li)
-    }
-    myboxFolderResultEl.appendChild(list)
-    if (probe.truncated) {
-      const more = document.createElement('p')
-      more.className = 'form-hint'
-      more.textContent = '항목이 많아 일부만 표시했습니다.'
-      myboxFolderResultEl.appendChild(more)
-    }
+  if (!probe.entries.length) {
+    myboxFolderResultEl.classList.remove('hidden')
+    return
+  }
+
+  const list = document.createElement('ul')
+  list.className = 'mybox-folder-list'
+
+  const rows = probe.entries.map(entry => {
+    const li = document.createElement('li')
+    const name = document.createElement('span')
+    name.textContent = entry.path || entry.name
+    const type = document.createElement('span')
+    type.className = 'entry-type'
+    type.textContent = entry.itemType || (atRoot ? '' : '폴더')
+    li.append(name, type)
+    list.appendChild(li)
+    return { li, text: (entry.path || entry.name).toLowerCase() }
+  })
+
+  // 최상위에 항목이 많으면 스크롤만으로는 찾기 어렵다. 이름으로 걸러낸다.
+  if (probe.entries.length > 8) {
+    const filter = document.createElement('input')
+    filter.type = 'text'
+    filter.className = 'mybox-folder-filter'
+    filter.placeholder = '이름으로 거르기'
+    filter.autocomplete = 'off'
+    const count = document.createElement('span')
+    count.className = 'entry-type'
+    filter.addEventListener('input', () => {
+      const q = filter.value.trim().toLowerCase()
+      let shown = 0
+      for (const row of rows) {
+        const hit = !q || row.text.includes(q)
+        row.li.classList.toggle('hidden', !hit)
+        if (hit) shown++
+      }
+      count.textContent = q ? `${shown}개 일치` : ''
+    })
+    const bar = document.createElement('div')
+    bar.className = 'mybox-folder-filterbar'
+    bar.append(filter, count)
+    myboxFolderResultEl.appendChild(bar)
+  }
+
+  myboxFolderResultEl.appendChild(list)
+
+  if (probe.truncated) {
+    const more = document.createElement('p')
+    more.className = 'form-hint'
+    more.textContent = '항목이 많아 일부만 표시했습니다.'
+    myboxFolderResultEl.appendChild(more)
   }
   myboxFolderResultEl.classList.remove('hidden')
 }

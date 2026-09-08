@@ -234,3 +234,113 @@ pub async fn mybox_get_quota(app: tauri::AppHandle) -> CmdResult<Quota> {
         }
     }
 }
+
+/// 폴더 하나. 최상위 목록에서는 `item_type`, 경로 검색에서는 `path` 가 채워진다.
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ResourceEntry {
+    name: String,
+    resource_id: String,
+    item_type: Option<String>,
+    path: Option<String>,
+}
+
+/// "이 폴더가 Open API 로 보이는가"에 대한 답.
+/// 공유 받은 폴더·암호 폴더는 Open API 로 보이지 않으므로, 업로드 대상이
+/// 쓸 수 있는 폴더인지 판정하는 용도다. 읽기만 하고 아무것도 만들지 않는다.
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct FolderProbe {
+    /// 조회한 경로. 빈 문자열이면 최상위 목록.
+    query_path: String,
+    found: bool,
+    entries: Vec<ResourceEntry>,
+    truncated: bool,
+    raw: serde_json::Value,
+}
+
+const PROBE_ENTRY_LIMIT: usize = 300;
+
+fn entries_from(raw: &serde_json::Value) -> (Vec<ResourceEntry>, bool) {
+    let items = match client::extract_array(raw, "resources") {
+        Some(a) => a,
+        None => return (Vec::new(), false),
+    };
+    let truncated = items.len() > PROBE_ENTRY_LIMIT;
+    let entries = items
+        .iter()
+        .take(PROBE_ENTRY_LIMIT)
+        .filter_map(|v| {
+            Some(ResourceEntry {
+                name: v.get("name")?.as_str()?.to_string(),
+                resource_id: v
+                    .get("resourceId")
+                    .and_then(|x| x.as_str())
+                    .unwrap_or_default()
+                    .to_string(),
+                item_type: v.get("type").and_then(|x| x.as_str()).map(str::to_string),
+                path: v.get("path").and_then(|x| x.as_str()).map(str::to_string),
+            })
+        })
+        .collect();
+    (entries, truncated)
+}
+
+/// 경로를 `/어류조사/20240815` 형태로 다듬는다. 빈 값이면 최상위 조회.
+fn normalize_folder_path(path: Option<String>) -> String {
+    let p = path.unwrap_or_default();
+    let p = p.trim();
+    if p.is_empty() {
+        return String::new();
+    }
+    let trimmed = p.trim_end_matches('/');
+    if trimmed.starts_with('/') {
+        trimmed.to_string()
+    } else {
+        format!("/{}", trimmed)
+    }
+}
+
+#[tauri::command]
+pub async fn mybox_probe_folder(
+    app: tauri::AppHandle,
+    path: Option<String>,
+) -> CmdResult<FolderProbe> {
+    let meta = load_meta(&app);
+    let stored = token::load()?
+        .ok_or_else(|| CommandError::from("MyBox 토큰이 설정되지 않았습니다.".to_string()))?;
+    let base = effective_api_base(&meta);
+    let query_path = normalize_folder_path(path);
+
+    let raw = if query_path.is_empty() {
+        client::get_root_resources(&base, &stored).await?
+    } else {
+        client::search_folder_by_path(&base, &stored, &query_path).await?
+    };
+
+    let (entries, truncated) = entries_from(&raw);
+    Ok(FolderProbe {
+        found: !entries.is_empty(),
+        query_path,
+        entries,
+        truncated,
+        raw,
+    })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::normalize_folder_path;
+
+    #[test]
+    fn normalize_folder_path_shapes_input() {
+        assert_eq!(normalize_folder_path(None), "");
+        assert_eq!(normalize_folder_path(Some("   ".into())), "");
+        assert_eq!(normalize_folder_path(Some("어류조사".into())), "/어류조사");
+        assert_eq!(normalize_folder_path(Some("/어류조사/".into())), "/어류조사");
+        assert_eq!(
+            normalize_folder_path(Some(" /어류조사/20240815/ ".into())),
+            "/어류조사/20240815"
+        );
+    }
+}

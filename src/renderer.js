@@ -1279,3 +1279,82 @@ myboxClearBtn.addEventListener('click', async () => {
     setMyboxBusy(false)
   }
 })
+
+// ── 업로드 대상 폴더 확인 ──────────────────────────────────
+// 공유 받은 폴더/암호 폴더는 Open API 로 보이지 않는다.
+// 업로드 대상으로 쓸 수 있는 폴더인지 눈으로 확인하기 위한 읽기 전용 조회.
+
+const myboxFolderPathEl   = document.getElementById('myboxFolderPath')
+const myboxFolderCheckBtn = document.getElementById('myboxFolderCheck')
+const myboxFolderResultEl = document.getElementById('myboxFolderResult')
+
+function renderFolderProbe(probe) {
+  myboxFolderResultEl.textContent = ''
+  const atRoot = !probe.queryPath
+
+  const summary = document.createElement('strong')
+  summary.className = 'folder-summary'
+  if (atRoot) {
+    summary.textContent = probe.entries.length
+      ? `최상위에서 ${probe.entries.length}개를 찾았습니다.`
+      : '최상위가 비어 있습니다.'
+    myboxFolderResultEl.className = 'mybox-folder-result'
+  } else if (probe.found) {
+    summary.textContent = `${probe.queryPath} — Open API 로 보입니다. 업로드 대상으로 쓸 수 있습니다.`
+    myboxFolderResultEl.className = 'mybox-folder-result ok'
+  } else {
+    summary.textContent =
+      `${probe.queryPath} — Open API 로 보이지 않습니다. 경로가 틀렸거나, 공유 받은 폴더 또는 암호 폴더일 수 있습니다.`
+    myboxFolderResultEl.className = 'mybox-folder-result warn'
+  }
+  myboxFolderResultEl.appendChild(summary)
+
+  if (probe.entries.length) {
+    const list = document.createElement('ul')
+    list.className = 'mybox-folder-list'
+    for (const entry of probe.entries) {
+      const li = document.createElement('li')
+      const name = document.createElement('span')
+      name.textContent = entry.path || entry.name
+      const type = document.createElement('span')
+      type.className = 'entry-type'
+      type.textContent = entry.itemType || (atRoot ? '' : '폴더')
+      li.append(name, type)
+      list.appendChild(li)
+    }
+    myboxFolderResultEl.appendChild(list)
+    if (probe.truncated) {
+      const more = document.createElement('p')
+      more.className = 'form-hint'
+      more.textContent = '항목이 많아 일부만 표시했습니다.'
+      myboxFolderResultEl.appendChild(more)
+    }
+  }
+  myboxFolderResultEl.classList.remove('hidden')
+}
+
+myboxFolderCheckBtn.addEventListener('click', async () => {
+  myboxFolderCheckBtn.disabled = true
+  setMyboxResult('폴더를 확인하는 중…', 'info')
+  setMyboxRaw('')
+  try {
+    const probe = await invoke('mybox_probe_folder', { path: myboxFolderPathEl.value || null })
+    renderFolderProbe(probe)
+    setMyboxRaw(JSON.stringify(probe.raw, null, 2))
+    setMyboxResult('')
+  } catch (err) {
+    const { message, body } = describeMyboxError(err)
+    myboxFolderResultEl.classList.add('hidden')
+    setMyboxResult(message, 'error')
+    setMyboxRaw(body)
+  } finally {
+    myboxFolderCheckBtn.disabled = false
+  }
+})
+
+myboxFolderPathEl.addEventListener('keydown', (e) => {
+  if (e.key === 'Enter') {
+    e.preventDefault()
+    myboxFolderCheckBtn.click()
+  }
+})

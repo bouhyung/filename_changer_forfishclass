@@ -764,6 +764,7 @@ pub fn run() {
             mybox::mybox_set_api_base,
             mybox::mybox_clear_token,
             mybox::mybox_get_quota,
+            mybox::mybox_probe_folder,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

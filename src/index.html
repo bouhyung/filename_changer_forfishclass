@@ -156,6 +156,21 @@
 
       <div class="mybox-quota hidden" id="myboxQuota"></div>
 
+      <details class="mybox-advanced" id="myboxFolderSection">
+        <summary>업로드 대상 폴더 확인</summary>
+        <div class="form-group">
+          <label for="myboxFolderPath">폴더 경로</label>
+          <input type="text" id="myboxFolderPath" placeholder="/어류조사 (비우면 최상위 목록)"
+                 spellcheck="false" autocomplete="off" />
+          <p class="form-hint">
+            이 폴더가 Open API 로 보이는지 확인합니다. <strong>읽기만 하며 아무것도 만들거나 바꾸지 않습니다.</strong>
+            공유 받은 폴더와 암호 폴더는 Open API 로 보이지 않으므로, 여기서 보이지 않으면 업로드 대상으로 쓸 수 없습니다.
+          </p>
+        </div>
+        <button type="button" class="btn-secondary" id="myboxFolderCheck">확인</button>
+        <div class="mybox-folder-result hidden" id="myboxFolderResult"></div>
+      </details>
+
       <details class="mybox-raw hidden" id="myboxRawWrap">
         <summary>응답 원문 (진단용)</summary>
         <pre id="myboxRaw"></pre>

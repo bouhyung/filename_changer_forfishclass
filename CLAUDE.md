@@ -65,6 +65,7 @@ Requires `gh` CLI authenticated (`gh auth login`).
 | `load_defaults` / `save_defaults` | Persist form defaults to `app_config_dir/defaults.json` |
 | `open_help` | Open `help.html` in a new WebviewWindow |
 | `mybox_token_status` / `mybox_set_token` / `mybox_set_api_base` / `mybox_clear_token` | MyBox 개인용 액세스 토큰 관리. 토큰은 OS 키체인에만 저장되고 프론트엔드로는 마스킹된 상태(`TokenStatus`)만 반환된다. 저장 전에 항상 `GET /drive/storage` 로 검증한다. |
+| `mybox_probe_folder` | 폴더 경로가 Open API 로 보이는지 읽기 전용 확인 (경로 생략 시 최상위 목록). 공유 받은 폴더·암호 폴더는 Open API 미지원이라, 업로드 대상으로 쓸 수 있는 폴더인지 판정하는 데 쓴다. |
 | `mybox_get_quota` | MyBox 사용 용량 조회 (`usedBytes` / `quotaBytes` / `maxFileBytes`). 진단용 응답 원문도 함께 반환. |
 | `suggest_species` | Few-shot fish species suggestion via local Ollama (Gemma 3 vision). Sends N=4 random sample images per species (from bundled `resources/reference_images/<species>/`) plus the query image. Returns top-3 candidates with confidences. |
 

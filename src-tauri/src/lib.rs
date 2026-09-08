@@ -8,6 +8,8 @@ use std::path::{Path, PathBuf};
 use std::sync::{Mutex, OnceLock};
 use tauri::Manager;
 
+mod mybox;
+
 const RAW_EXT: &[&str] = &[
     ".heic", ".heif",
     ".orf", ".ori",
@@ -757,6 +759,11 @@ pub fn run() {
             save_history,
             open_help,
             suggest_species,
+            mybox::mybox_token_status,
+            mybox::mybox_set_token,
+            mybox::mybox_set_api_base,
+            mybox::mybox_clear_token,
+            mybox::mybox_get_quota,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

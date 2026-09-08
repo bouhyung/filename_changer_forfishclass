@@ -24,3 +24,15 @@ reqwest = { version = "0.12", default-features = false, features = ["json", "rus
 tokio = { version = "1", features = ["rt-multi-thread", "macros"] }
 base64 = "0.22"
 rand = { version = "0.8", features = ["small_rng"] }
+
+# MyBox 액세스 토큰은 OS 키체인에만 보관한다 (docs/mybox-upload-design.md 2-2)
+[target.'cfg(target_os = "macos")'.dependencies]
+keyring = { version = "3", features = ["apple-native"] }
+
+[target.'cfg(target_os = "windows")'.dependencies]
+keyring = { version = "3", features = ["windows-native"] }
+
+# Linux 는 배포 대상이 아니지만 개발/CI 빌드가 통과해야 한다.
+# 시스템 라이브러리가 필요 없는 커널 keyutils 백엔드를 쓴다.
+[target.'cfg(target_os = "linux")'.dependencies]
+keyring = { version = "3", features = ["linux-native"] }

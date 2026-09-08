@@ -64,6 +64,8 @@ Requires `gh` CLI authenticated (`gh auth login`).
 | `move_to_skip` | Move file to `Skip/` subfolder |
 | `load_defaults` / `save_defaults` | Persist form defaults to `app_config_dir/defaults.json` |
 | `open_help` | Open `help.html` in a new WebviewWindow |
+| `mybox_token_status` / `mybox_set_token` / `mybox_set_api_base` / `mybox_clear_token` | MyBox 개인용 액세스 토큰 관리. 토큰은 OS 키체인에만 저장되고 프론트엔드로는 마스킹된 상태(`TokenStatus`)만 반환된다. 저장 전에 항상 `GET /drive/storage` 로 검증한다. |
+| `mybox_get_quota` | MyBox 사용 용량 조회 (`usedBytes` / `quotaBytes` / `maxFileBytes`). 진단용 응답 원문도 함께 반환. |
 | `suggest_species` | Few-shot fish species suggestion via local Ollama (Gemma 3 vision). Sends N=4 random sample images per species (from bundled `resources/reference_images/<species>/`) plus the query image. Returns top-3 candidates with confidences. |
 
 ### Frontend state (renderer.js)
@@ -74,6 +76,17 @@ Requires `gh` CLI authenticated (`gh auth login`).
 - `parsedCache` — per-filename parsed filename structure
 
 `parseExistingFilename()` reverse-parses the structured filename format to pre-fill form fields when revisiting already-renamed files.
+
+### MyBox 업로드 (`src-tauri/src/mybox/`)
+
+전체 설계는 `docs/mybox-upload-design.md`. 현재 1단계(토큰 저장/검증 + 용량 조회)까지 구현됨.
+
+- `client.rs` — MYBOX Open API 의 HTTP 와이어 포맷을 다루는 **유일한** 파일.
+  공식 문서를 확인하지 못한 상태에서 작성했으므로, 스펙이 다르면 이 파일만 고치면 된다.
+  API 주소는 설정에서 바꿀 수 있고(`mybox.json` 의 `apiBase`), 실패 시 HTTP 상태 코드와
+  응답 원문을 화면까지 올려보내 진단할 수 있게 되어 있다.
+- `token.rs` — PAT 를 OS 키체인에만 보관. 평문 파일 저장·프론트 반환·로그 출력 모두 금지.
+- `mod.rs` — Tauri 커맨드. 비밀이 아닌 설정만 `app_config_dir/mybox.json` 에 저장한다.
 
 ### Supported file types
 

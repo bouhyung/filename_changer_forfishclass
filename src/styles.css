@@ -638,3 +638,236 @@ button:disabled {
 .empty-state span {
   font-size: 15px;
 }
+
+/* ── MyBox 연결 설정 ─────────────────────────────────────── */
+
+.modal {
+  display: none;
+  position: fixed;
+  inset: 0;
+  z-index: 200;
+  align-items: center;
+  justify-content: center;
+}
+
+.modal.active {
+  display: flex;
+}
+
+.modal-backdrop {
+  position: absolute;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.6);
+}
+
+.modal-panel {
+  position: relative;
+  width: min(560px, calc(100vw - 48px));
+  max-height: calc(100vh - 80px);
+  overflow-y: auto;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow);
+}
+
+.modal-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 18px 22px;
+  border-bottom: 1px solid var(--border);
+}
+
+.modal-header h2 {
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.modal-close {
+  background: none;
+  border: none;
+  color: var(--text-secondary);
+  font-size: 24px;
+  line-height: 1;
+  cursor: pointer;
+  padding: 0 4px;
+}
+
+.modal-close:hover {
+  color: var(--text-primary);
+}
+
+.modal-body {
+  padding: 20px 22px 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.modal-body .form-group {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.modal-body input[type="text"],
+.modal-body input[type="password"] {
+  width: 100%;
+  padding: 9px 12px;
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  color: var(--text-primary);
+  font-size: 13px;
+  font-family: inherit;
+}
+
+.modal-body input:focus {
+  outline: none;
+  border-color: var(--accent-blue);
+}
+
+.form-hint {
+  font-size: 11.5px;
+  line-height: 1.6;
+  color: var(--text-muted);
+}
+
+.link-btn {
+  background: none;
+  border: none;
+  padding: 0;
+  color: var(--accent-blue);
+  font-size: inherit;
+  font-family: inherit;
+  cursor: pointer;
+  text-decoration: underline;
+}
+
+.mybox-status {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 11px 14px;
+  border-radius: var(--radius-sm);
+  font-size: 13px;
+  background: var(--bg-tertiary);
+  color: var(--text-secondary);
+}
+
+.mybox-status.ok {
+  background: var(--accent-green-bg);
+  color: var(--accent-green);
+}
+
+.mybox-status.warn {
+  background: var(--accent-red-bg);
+  color: var(--accent-red);
+}
+
+.mybox-status .status-sub {
+  color: var(--text-muted);
+  font-size: 11.5px;
+}
+
+.mybox-advanced summary {
+  cursor: pointer;
+  font-size: 12px;
+  color: var(--text-secondary);
+  padding: 4px 0;
+}
+
+.mybox-advanced summary:hover {
+  color: var(--text-primary);
+}
+
+.mybox-advanced .form-group {
+  padding-top: 10px;
+}
+
+.mybox-actions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.mybox-actions .btn-danger {
+  margin-left: auto;
+}
+
+.mybox-result {
+  padding: 11px 14px;
+  border-radius: var(--radius-sm);
+  font-size: 12.5px;
+  line-height: 1.6;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.mybox-result.ok {
+  background: var(--accent-green-bg);
+  color: var(--accent-green);
+}
+
+.mybox-result.error {
+  background: var(--accent-red-bg);
+  color: var(--accent-red);
+}
+
+.mybox-result.info {
+  background: var(--bg-tertiary);
+  color: var(--text-secondary);
+}
+
+.mybox-quota {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 13px 14px;
+  background: var(--bg-tertiary);
+  border-radius: var(--radius-sm);
+  font-size: 12.5px;
+  color: var(--text-secondary);
+}
+
+.mybox-quota-bar {
+  height: 6px;
+  border-radius: 3px;
+  background: var(--bg-primary);
+  overflow: hidden;
+}
+
+.mybox-quota-bar span {
+  display: block;
+  height: 100%;
+  background: var(--accent-blue);
+}
+
+.mybox-quota-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.mybox-raw summary {
+  cursor: pointer;
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+.mybox-raw pre {
+  margin-top: 8px;
+  padding: 11px;
+  max-height: 220px;
+  overflow: auto;
+  background: var(--bg-primary);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  font-size: 11.5px;
+  line-height: 1.5;
+  color: var(--text-secondary);
+  white-space: pre-wrap;
+  word-break: break-all;
+}

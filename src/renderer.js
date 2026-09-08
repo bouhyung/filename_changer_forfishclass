@@ -360,6 +360,15 @@ document.addEventListener('mouseup', () => {
 inputFishName.addEventListener('input', updateFilenamePreview)
 
 document.addEventListener('keydown', (e) => {
+  // MyBox 설정 창이 열려 있으면 파일 작업 단축키가 동작하면 안 된다
+  if (myboxModal.classList.contains('active')) {
+    if (e.key === 'Escape') closeMyboxModal()
+    else if (e.key === 'Enter' && e.target.matches('#myboxToken, #myboxApiBase')) {
+      e.preventDefault()
+      myboxSaveBtn.click()
+    }
+    return
+  }
   if (e.key === 'Escape') {
     closeLightbox()
     return
@@ -1018,3 +1027,255 @@ function pushHistoryFromCurrent() {
     invoke('save_history', { history }).catch(() => {})
   }, 200)
 }
+
+// ── MyBox 연결 (1단계: 토큰 저장/검증 + 용량 조회) ─────────
+// 설계: docs/mybox-upload-design.md
+// 토큰 원문은 Rust 쪽 OS 키체인에만 있고 여기로 내려오지 않는다.
+// 입력 필드에 잠깐 머무르는 값도 저장 직후 지운다.
+
+const myboxModal     = document.getElementById('myboxModal')
+const myboxStatusEl  = document.getElementById('myboxStatus')
+const myboxTokenEl   = document.getElementById('myboxToken')
+const myboxApiBaseEl = document.getElementById('myboxApiBase')
+const myboxResultEl  = document.getElementById('myboxResult')
+const myboxQuotaEl   = document.getElementById('myboxQuota')
+const myboxRawWrap   = document.getElementById('myboxRawWrap')
+const myboxRawEl     = document.getElementById('myboxRaw')
+const myboxSaveBtn   = document.getElementById('myboxSave')
+const myboxRefreshBtn = document.getElementById('myboxRefresh')
+const myboxClearBtn  = document.getElementById('myboxClear')
+
+let myboxStatus = null
+
+function formatBytes(n) {
+  if (n == null) return '—'
+  const units = ['B', 'KB', 'MB', 'GB', 'TB']
+  let v = n
+  let i = 0
+  while (v >= 1024 && i < units.length - 1) {
+    v /= 1024
+    i++
+  }
+  return (i === 0 ? v : v.toFixed(v >= 100 ? 0 : 1)) + ' ' + units[i]
+}
+
+function formatTimestamp(ms) {
+  if (!ms) return null
+  return new Date(ms).toLocaleString('ko-KR')
+}
+
+function setMyboxResult(text, kind) {
+  if (!text) {
+    myboxResultEl.classList.add('hidden')
+    myboxResultEl.textContent = ''
+    return
+  }
+  myboxResultEl.textContent = text
+  myboxResultEl.className = 'mybox-result ' + kind
+}
+
+function setMyboxRaw(text) {
+  if (!text) {
+    myboxRawWrap.classList.add('hidden')
+    myboxRawEl.textContent = ''
+    return
+  }
+  myboxRawEl.textContent = text
+  myboxRawWrap.classList.remove('hidden')
+}
+
+// Rust 쪽 CommandError { message, status, body } 또는 평문 문자열이 온다
+function describeMyboxError(err) {
+  if (typeof err === 'string') return { message: err, body: null }
+  if (err && typeof err === 'object') {
+    const status = err.status ? ` (HTTP ${err.status})` : ''
+    return { message: (err.message || '알 수 없는 오류') + status, body: err.body || null }
+  }
+  return { message: String(err), body: null }
+}
+
+function renderMyboxStatus(status) {
+  myboxStatus = status
+  if (document.activeElement !== myboxApiBaseEl) {
+    myboxApiBaseEl.value = status.apiBase || status.defaultApiBase
+  }
+  myboxApiBaseEl.placeholder = status.defaultApiBase
+
+  myboxRefreshBtn.disabled = !status.configured
+  myboxClearBtn.disabled = !status.configured
+
+  if (status.keychainError) {
+    myboxStatusEl.className = 'mybox-status warn'
+    myboxStatusEl.textContent = '키체인에 접근할 수 없습니다 — ' + status.keychainError
+    return
+  }
+  if (!status.configured) {
+    myboxStatusEl.className = 'mybox-status'
+    myboxStatusEl.textContent = '토큰이 설정되지 않았습니다.'
+    return
+  }
+  if (status.invalid) {
+    myboxStatusEl.className = 'mybox-status warn'
+    myboxStatusEl.textContent =
+      `토큰 ${status.maskedTail || ''} 이(가) 거부되었습니다. 만료되었을 수 있으니 새로 발급받아 주세요.`
+    return
+  }
+  myboxStatusEl.className = 'mybox-status ok'
+  const verified = formatTimestamp(status.lastVerifiedAtMs)
+  myboxStatusEl.textContent =
+    `연결됨 · ${status.maskedTail || ''}` + (verified ? ` · 마지막 확인 ${verified}` : '')
+}
+
+function renderMyboxQuota(quota) {
+  const { usedBytes, quotaBytes, maxFileBytes } = quota
+  if (usedBytes == null && quotaBytes == null) {
+    // 스펙과 응답 구조가 다르다는 신호. 원문을 봐야 한다.
+    myboxQuotaEl.classList.add('hidden')
+    setMyboxResult(
+      '응답은 성공했지만 usedBytes/quotaBytes 를 찾지 못했습니다. 아래 응답 원문을 보고 필드명을 확인해주세요.',
+      'info'
+    )
+    return
+  }
+  myboxQuotaEl.textContent = ''
+  const pct = (usedBytes != null && quotaBytes) ? Math.min(100, (usedBytes / quotaBytes) * 100) : null
+
+  if (pct != null) {
+    const bar = document.createElement('div')
+    bar.className = 'mybox-quota-bar'
+    const fill = document.createElement('span')
+    fill.style.width = pct.toFixed(1) + '%'
+    bar.appendChild(fill)
+    myboxQuotaEl.appendChild(bar)
+  }
+
+  const rows = [
+    ['사용 중', `${formatBytes(usedBytes)} / ${formatBytes(quotaBytes)}` + (pct != null ? ` (${pct.toFixed(1)}%)` : '')],
+    ['파일 1개 최대', formatBytes(maxFileBytes)],
+  ]
+  for (const [label, value] of rows) {
+    const row = document.createElement('div')
+    row.className = 'mybox-quota-row'
+    const l = document.createElement('span')
+    l.textContent = label
+    const v = document.createElement('strong')
+    v.textContent = value
+    row.append(l, v)
+    myboxQuotaEl.appendChild(row)
+  }
+  myboxQuotaEl.classList.remove('hidden')
+}
+
+function setMyboxBusy(busy) {
+  for (const btn of [myboxSaveBtn, myboxRefreshBtn, myboxClearBtn]) {
+    btn.disabled = busy
+  }
+  if (!busy && myboxStatus) renderMyboxStatus(myboxStatus)
+}
+
+async function refreshMyboxStatus() {
+  try {
+    renderMyboxStatus(await invoke('mybox_token_status'))
+  } catch (err) {
+    const { message } = describeMyboxError(err)
+    myboxStatusEl.className = 'mybox-status warn'
+    myboxStatusEl.textContent = message
+  }
+}
+
+async function openMyboxModal() {
+  myboxTokenEl.value = ''
+  setMyboxResult('')
+  setMyboxRaw('')
+  myboxQuotaEl.classList.add('hidden')
+  myboxModal.classList.add('active')
+  await refreshMyboxStatus()
+  myboxTokenEl.focus()
+}
+
+function closeMyboxModal() {
+  // 입력 중이던 토큰이 DOM에 남지 않게 한다
+  myboxTokenEl.value = ''
+  myboxModal.classList.remove('active')
+}
+
+document.getElementById('btnMybox').addEventListener('click', openMyboxModal)
+document.getElementById('myboxClose').addEventListener('click', closeMyboxModal)
+document.getElementById('myboxBackdrop').addEventListener('click', closeMyboxModal)
+
+document.getElementById('myboxResetBase').addEventListener('click', () => {
+  myboxApiBaseEl.value = myboxStatus ? myboxStatus.defaultApiBase : ''
+  myboxApiBaseEl.focus()
+})
+
+myboxSaveBtn.addEventListener('click', async () => {
+  const tokenValue = myboxTokenEl.value.trim()
+  const apiBase = myboxApiBaseEl.value.trim()
+
+  if (!tokenValue && !(myboxStatus && myboxStatus.configured)) {
+    setMyboxResult('토큰을 입력해주세요.', 'error')
+    return
+  }
+
+  setMyboxBusy(true)
+  setMyboxResult('MyBox 서버에 확인하는 중…', 'info')
+  setMyboxRaw('')
+  myboxQuotaEl.classList.add('hidden')
+  try {
+    // 토큰을 새로 입력했으면 저장 후 검증, 아니면 주소만 바꾸고 재검증
+    const status = tokenValue
+      ? await invoke('mybox_set_token', { tokenValue, apiBase: apiBase || null })
+      : await invoke('mybox_set_api_base', { apiBase: apiBase || null })
+    myboxTokenEl.value = ''
+    renderMyboxStatus(status)
+    setMyboxResult(tokenValue ? '토큰을 확인하고 저장했습니다.' : 'API 주소를 저장했습니다.', 'ok')
+    await loadMyboxQuota({ quiet: true })
+  } catch (err) {
+    const { message, body } = describeMyboxError(err)
+    setMyboxResult(message, 'error')
+    setMyboxRaw(body)
+    await refreshMyboxStatus()
+  } finally {
+    setMyboxBusy(false)
+  }
+})
+
+async function loadMyboxQuota({ quiet = false } = {}) {
+  if (!quiet) {
+    setMyboxBusy(true)
+    setMyboxResult('용량을 불러오는 중…', 'info')
+    setMyboxRaw('')
+  }
+  try {
+    const quota = await invoke('mybox_get_quota')
+    renderMyboxQuota(quota)
+    // 1단계에서는 응답 구조 확인이 목적이므로 성공해도 원문을 남겨둔다
+    setMyboxRaw(JSON.stringify(quota.raw, null, 2))
+    if (!quiet && quota.usedBytes != null) setMyboxResult('')
+    await refreshMyboxStatus()
+  } catch (err) {
+    const { message, body } = describeMyboxError(err)
+    setMyboxResult(message, 'error')
+    setMyboxRaw(body)
+    await refreshMyboxStatus()
+  } finally {
+    if (!quiet) setMyboxBusy(false)
+  }
+}
+
+myboxRefreshBtn.addEventListener('click', () => loadMyboxQuota())
+
+myboxClearBtn.addEventListener('click', async () => {
+  if (!confirm('저장된 MyBox 토큰을 삭제할까요?')) return
+  setMyboxBusy(true)
+  try {
+    renderMyboxStatus(await invoke('mybox_clear_token'))
+    myboxQuotaEl.classList.add('hidden')
+    setMyboxRaw('')
+    setMyboxResult('토큰을 삭제했습니다.', 'ok')
+  } catch (err) {
+    setMyboxResult(describeMyboxError(err).message, 'error')
+  } finally {
+    setMyboxBusy(false)
+  }
+})

@@ -23,7 +23,10 @@
 
 ## 1. 재구성한 MYBOX Open API 요약
 
-**Base URL**: `https://api.mybox.naver.com/v1`
+**Base URL**: `https://open-api.mybox.naver.com/v1`
+
+> 실측으로 확인. 처음 재구성한 `api.mybox.naver.com` 은 MyBox **웹 서비스** 호스트라
+> `/v1/drive/storage` 에 HTML 페이지를 404 로 돌려준다. Open API 는 `open-api.` 서브도메인에 있다.
 
 **인증**: 개인용 액세스 토큰(PAT)
 - MYBOX 웹 설정에서 사용자가 직접 발급
@@ -284,7 +287,8 @@ futures-util = "0.3"                                   # 스트림 진행률 래
 구현 착수 전 `https://developers.mybox.naver.com/` 에서 확인할 것.
 확인 결과에 따라 위 설계가 바뀔 수 있는 항목들이다.
 
-1. **인증 헤더 형식** — `Authorization: Bearer <PAT>` 가 맞는지, 커스텀 헤더인지.
+1. ~~**API 주소**~~ — ✅ `https://open-api.mybox.naver.com/v1` 로 확인됨.
+2. **인증 헤더 형식** — `Authorization: Bearer <PAT>` 가 맞는지, 커스텀 헤더인지.
    PAT 외에 앱 등록 기반 OAuth 2.0 플로우가 따로 있는지 (있다면 여러 사용자 배포에는 그쪽이 맞다)
 2. **`POST /drive/files` 요청 바디** — 필드명(`parentFolderId`? `name`? `size`?), 필수/선택 구분
 3. **업로드 URL 응답** — 필드명, 유효기간, 전송 메서드(PUT/POST), `Content-Type`, 청크 분할 필요 여부

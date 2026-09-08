@@ -9,7 +9,7 @@
 use std::sync::OnceLock;
 use std::time::Duration;
 
-pub const DEFAULT_API_BASE: &str = "https://api.mybox.naver.com/v1";
+pub const DEFAULT_API_BASE: &str = "https://open-api.mybox.naver.com/v1";
 
 static HTTP: OnceLock<reqwest::Client> = OnceLock::new();
 
@@ -61,6 +61,13 @@ fn truncate(s: &str, n: usize) -> String {
     }
 }
 
+/// 응답 본문이 JSON 이 아니라 HTML 페이지인지 판별한다.
+/// API 주소 대신 웹 서비스 주소를 넣었을 때를 구분해 안내하기 위한 것.
+fn looks_like_html(body: &str) -> bool {
+    let head: String = body.trim_start().chars().take(200).collect::<String>().to_lowercase();
+    head.starts_with("<!doctype html") || head.starts_with("<html") || head.starts_with("<?xml")
+}
+
 /// GET {base}/drive/storage — 용량 조회.
 /// 1단계에서 토큰 유효성 검증에도 이 호출을 그대로 쓴다.
 /// 부수 효과가 없는 읽기 호출이라 검증용으로 가장 안전하다.
@@ -90,6 +97,18 @@ pub async fn get_storage(api_base: &str, token: &str) -> Result<serde_json::Valu
 
     if !status.is_success() {
         let code = status.as_u16();
+        // 웹 페이지가 돌아왔다면 엔드포인트 문제가 아니라 주소 자체가 API 가 아니다.
+        if looks_like_html(&raw) {
+            return Err(ApiError {
+                status: Some(code),
+                message: format!(
+                    "이 주소는 JSON API 가 아니라 웹 페이지를 반환했습니다 (HTTP {}). \
+                     API 서버 주소가 아닌 것 같습니다 — 공식 문서의 요청 URL 을 확인해 고급 설정에서 바꿔주세요.",
+                    code
+                ),
+                body: Some(truncate(&raw, 600)),
+            });
+        }
         let message = match code {
             401 => "토큰이 유효하지 않거나 만료되었습니다. MYBOX 웹에서 새 토큰을 발급받아 주세요.".to_string(),
             403 => "토큰에 이 작업을 수행할 권한이 없습니다.".to_string(),
@@ -110,7 +129,13 @@ pub async fn get_storage(api_base: &str, token: &str) -> Result<serde_json::Valu
 
     serde_json::from_str(&raw).map_err(|e| ApiError {
         status: Some(status.as_u16()),
-        message: format!("응답 JSON 파싱 실패: {}", e),
+        message: if looks_like_html(&raw) {
+            "이 주소는 JSON API 가 아니라 웹 페이지를 반환했습니다. API 서버 주소가 아닌 것 같습니다 — \
+             공식 문서의 요청 URL 을 확인해 고급 설정에서 바꿔주세요."
+                .to_string()
+        } else {
+            format!("응답 JSON 파싱 실패: {}", e)
+        },
         body: Some(truncate(&raw, 600)),
     })
 }
@@ -206,10 +231,36 @@ mod tests {
 
     #[tokio::test]
     async fn reports_parse_failure_with_raw_body() {
-        let (base, _rx) = serve_once("HTTP/1.1 200 OK", "<html>not json</html>");
+        let (base, _rx) = serve_once("HTTP/1.1 200 OK", "{oops");
         let err = get_storage(&base, "t").await.err().expect("실패해야 함");
         assert!(err.message.contains("파싱"), "{}", err.message);
-        assert!(err.body.unwrap().contains("not json"));
+        assert!(err.body.unwrap().contains("{oops"));
+    }
+
+    /// 실제로 겪은 경우: api.mybox.naver.com 이 MyBox 웹 페이지를 404 로 돌려줬다.
+    /// "엔드포인트를 찾을 수 없음"이 아니라 "API 주소가 아님"으로 안내해야 한다.
+    #[tokio::test]
+    async fn html_response_says_the_address_is_not_an_api() {
+        let page = "<!DOCTYPE html><html><head><title>Drive</title></head><body></body></html>";
+        for status_line in ["HTTP/1.1 404 Not Found", "HTTP/1.1 200 OK"] {
+            let (base, _rx) = serve_once(status_line, page);
+            let err = get_storage(&base, "t").await.err().expect("실패해야 함");
+            assert!(
+                err.message.contains("웹 페이지"),
+                "{} 에서 안내가 다릅니다: {}",
+                status_line,
+                err.message
+            );
+            assert!(err.body.unwrap().contains("<title>Drive</title>"));
+        }
+    }
+
+    #[test]
+    fn looks_like_html_only_matches_markup() {
+        assert!(looks_like_html("<!DOCTYPE html><html>"));
+        assert!(looks_like_html("\n  <html lang=\"ko\">"));
+        assert!(!looks_like_html(r#"{"usedBytes":1}"#));
+        assert!(!looks_like_html(""));
     }
 
     #[test]
@@ -228,8 +279,8 @@ mod tests {
         assert!(validate_api_base("http://evil.example.com").is_err());
         assert!(validate_api_base("").is_err());
         assert_eq!(
-            validate_api_base("https://api.mybox.naver.com/v1/").unwrap(),
-            "https://api.mybox.naver.com/v1"
+            validate_api_base("https://open-api.mybox.naver.com/v1/").unwrap(),
+            "https://open-api.mybox.naver.com/v1"
         );
         assert!(validate_api_base("http://127.0.0.1:8080").is_ok());
     }

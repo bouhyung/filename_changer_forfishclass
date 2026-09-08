@@ -83,7 +83,7 @@ Requires `gh` CLI authenticated (`gh auth login`).
 
 - `client.rs` — MYBOX Open API 의 HTTP 와이어 포맷을 다루는 **유일한** 파일.
   공식 문서를 확인하지 못한 상태에서 작성했으므로, 스펙이 다르면 이 파일만 고치면 된다.
-  API 주소는 설정에서 바꿀 수 있고(`mybox.json` 의 `apiBase`), 실패 시 HTTP 상태 코드와
+  기본 주소는 `https://open-api.mybox.naver.com/v1` 이며 설정에서 바꿀 수 있고(`mybox.json` 의 `apiBase`), 실패 시 HTTP 상태 코드와
   응답 원문을 화면까지 올려보내 진단할 수 있게 되어 있다.
 - `token.rs` — PAT 를 OS 키체인에만 보관. 평문 파일 저장·프론트 반환·로그 출력 모두 금지.
 - `mod.rs` — Tauri 커맨드. 비밀이 아닌 설정만 `app_config_dir/mybox.json` 에 저장한다.

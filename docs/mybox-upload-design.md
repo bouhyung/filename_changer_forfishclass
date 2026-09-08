@@ -28,11 +28,11 @@
 > 실측으로 확인. 처음 재구성한 `api.mybox.naver.com` 은 MyBox **웹 서비스** 호스트라
 > `/v1/drive/storage` 에 HTML 페이지를 404 로 돌려준다. Open API 는 `open-api.` 서브도메인에 있다.
 
-**인증**: 개인용 액세스 토큰(PAT)
+**인증**: 개인용 액세스 토큰(PAT) — `Authorization: Bearer <PAT>` (실측 확인)
 - MYBOX 웹 설정에서 사용자가 직접 발급
 - 만료 30 / 60 / 90 / 180일 선택, 계정당 최대 5개
 - 스코프 구분 없이 **드라이브 전체 접근** — 사실상 비밀번호와 동일한 취급 필요
-- 별도 OAuth 앱 등록 절차는 확인되지 않음 (→ 체크리스트 #1)
+- 별도 OAuth 앱 등록 절차는 확인되지 않음
 
 **공개 엔드포인트 20개**
 
@@ -50,7 +50,10 @@
 2. **전송** — 1단계에서 받은 **별도 스토리지 호스트**로 바이트 전송.
 3. **재개(resume)** 지원. 시각 값은 KST 기준.
 
-**용량 정보**: `GET /drive/storage` → `usedBytes`, `quotaBytes`, `maxFileBytes`
+**용량 정보**: `GET /drive/storage` → `usedBytes`, `quotaBytes`, `maxFileBytes` (실측 확인)
+
+`maxFileBytes` 는 실제 계정에서 **50GB** 로 나왔다. 이 조사에서 다루는 RAW·동영상은
+여기 걸릴 일이 거의 없으므로, 프리플라이트의 파일 크기 스킵은 예외 처리 수준으로 두면 된다.
 
 **목록/검색**: `sortBy` · `sortOrder` · `count`(1~1000), 커서 페이지네이션.
 검색은 `q` / `category` / 날짜 범위 중 최소 하나 필수, 페이지 20~200.
@@ -287,24 +290,25 @@ futures-util = "0.3"                                   # 스트림 진행률 래
 구현 착수 전 `https://developers.mybox.naver.com/` 에서 확인할 것.
 확인 결과에 따라 위 설계가 바뀔 수 있는 항목들이다.
 
-1. ~~**API 주소**~~ — ✅ `https://open-api.mybox.naver.com/v1` 로 확인됨.
-2. **인증 헤더 형식** — `Authorization: Bearer <PAT>` 가 맞는지, 커스텀 헤더인지.
-   PAT 외에 앱 등록 기반 OAuth 2.0 플로우가 따로 있는지 (있다면 여러 사용자 배포에는 그쪽이 맞다)
-2. **`POST /drive/files` 요청 바디** — 필드명(`parentFolderId`? `name`? `size`?), 필수/선택 구분
-3. **업로드 URL 응답** — 필드명, 유효기간, 전송 메서드(PUT/POST), `Content-Type`, 청크 분할 필요 여부
-4. **동일 이름 존재 시 동작** — 덮어쓰기 / 자동 리네임 / 409 중 무엇인가.
+1. ~~**API 주소**~~ — ✅ `https://open-api.mybox.naver.com/v1`
+2. ~~**인증 헤더 형식**~~ — ✅ `Authorization: Bearer <PAT>`.
+   PAT 외에 앱 등록 기반 OAuth 2.0 플로우가 따로 있는지는 아직 미확인
+   (있다면 여러 사용자 배포에는 그쪽이 맞다)
+3. **`POST /drive/files` 요청 바디** — 필드명(`parentFolderId`? `name`? `size`?), 필수/선택 구분
+4. **업로드 URL 응답** — 필드명, 유효기간, 전송 메서드(PUT/POST), `Content-Type`, 청크 분할 필요 여부
+5. **동일 이름 존재 시 동작** — 덮어쓰기 / 자동 리네임 / 409 중 무엇인가.
    재실행 시 중복 생성을 막는 정책이 여기서 갈린다
-5. **재개(resume) 프로토콜** — 오프셋 조회 방법, `Range`/`Content-Range` 헤더 규격
-6. **경로 기반 폴더 조회 API 유무** — 있으면 3장의 세그먼트 순회를 통째로 제거 가능
-7. **Rate limit** — 분/일 단위 호출 제한, 429 응답 형식과 `Retry-After`.
+6. **재개(resume) 프로토콜** — 오프셋 조회 방법, `Range`/`Content-Range` 헤더 규격
+7. **경로 기반 폴더 조회 API 유무** — 있으면 3장의 세그먼트 순회를 통째로 제거 가능
+8. **Rate limit** — 분/일 단위 호출 제한, 429 응답 형식과 `Retry-After`.
    동시 업로드 수 기본값을 여기 맞춰 정한다
-8. **`maxFileBytes` 와 파일 타입 제한** — 동영상/RAW 확장자가 제한에 걸리는지
-9. **한글 파일명 인코딩 — NFC vs NFD** ⚠️
+9. ~~**`maxFileBytes`**~~ — ✅ 50GB. 다만 **파일 타입 제한**(동영상/RAW 확장자 거부 여부)은 미확인
+10. **한글 파일명 인코딩 — NFC vs NFD** ⚠️
    macOS는 파일명을 **NFD**(자소 분리)로 저장한다. `돌돔` 이 `ㄷㅗㄹㄷㅗㅁ` 형태로 전송되면
    MYBOX 웹/앱에서 깨져 보이거나 검색이 안 될 수 있다.
    **전송 전 NFC 정규화를 넣는 것을 기본으로 하되, 실제 동작을 반드시 확인할 것.**
    (`unicode-normalization` 크레이트 필요. 이 앱은 파일명이 전부 한글이라 영향이 크다)
-10. **타임존** — `modifiedTime` 등 시각 값이 KST 고정인지, ISO8601 오프셋을 받는지
+11. **타임존** — `modifiedTime` 등 시각 값이 KST 고정인지, ISO8601 오프셋을 받는지
 
 ---
 
@@ -330,7 +334,15 @@ futures-util = "0.3"                                   # 스트림 진행률 래
 - 401 을 토큰 만료 안내로, 파싱 실패를 응답 원문과 함께 보고한다
 - `usedBytes` 등이 `data` / `result` / `storage` 래퍼 안에 있어도 찾아낸다
 
-실제 MYBOX 서버로는 아직 확인하지 못했다. 그래서:
+**실제 MYBOX 서버로 확인 완료.** `GET /drive/storage` 가 200 과 함께
+`usedBytes` / `quotaBytes` / `maxFileBytes` 를 돌려줬다 (173GB / 2.0TB, 파일 최대 50GB).
+체크리스트 #1(주소), #2(인증 헤더), #8 일부가 해소됐다.
+
+가는 길에 하나 배웠다: 처음 재구성한 `api.mybox.naver.com` 은 MyBox **웹 서비스**
+호스트라 `/v1/drive/storage` 에 `<title>Drive</title>` 인 HTML 을 404 로 돌려준다.
+그래서 응답이 HTML 이면 "엔드포인트 없음"이 아니라 "이 주소는 API 가 아님"으로 안내한다.
+
+주소가 틀렸을 때를 위해 남겨둔 장치들:
 - **API 주소를 앱에서 바꿀 수 있다** (설정 → 고급 설정). 재빌드 없이 바로잡을 수 있다
 - **성공/실패 모두 응답 원문을 화면에 보여준다** (설정 창의 "응답 원문(진단용)")
 - 용량 필드를 못 찾으면 그 사실을 명시적으로 안내한다
